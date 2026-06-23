@@ -1111,7 +1111,7 @@ class ComputedStyle(dict):
             weight = (0, 0, (0, 0, 0))
             pending = False
 
-        wanted_key = key.replace('_', '-')
+        wanted_key = None
         if logical_function := PHYSICAL_FUNCTIONS.get(key):
             # TODO: use writing-mode and text-orientation.
             logical_key = logical_function(block='ttb', inline=self['direction'])
@@ -1138,6 +1138,8 @@ class ComputedStyle(dict):
                 else:
                     solved_tokens.extend(tokens)
             try:
+                if wanted_key is None:
+                    wanted_key = key.replace('_', '-')
                 value = value.solve(solved_tokens, wanted_key)
             except InvalidValues:
                 if key in INHERITED and parent_style is not None:
