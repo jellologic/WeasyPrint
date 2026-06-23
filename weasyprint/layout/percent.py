@@ -4,6 +4,7 @@ from math import inf
 
 from ..css import resolve_math
 from ..css.functions import check_math
+from ..css.properties import Dimension
 from ..formatting_structure import boxes
 
 _BORDER_WIDTH_PROPS = (
@@ -18,7 +19,11 @@ def percentage(value, computed, refer_to):
     ``refer_to`` is the length for 100%.
 
     """
-    if check_math(value):
+    # Dimension and str values can never be math expressions (only function
+    # tokens and plain tuples are), so skip the check_math call for them.
+    value_type = type(value)
+    if value_type is not Dimension and value_type is not str and \
+            check_math(value):
         value = resolve_math(value, computed, refer_to=refer_to)
     if value is None or value == 'auto':
         return value
