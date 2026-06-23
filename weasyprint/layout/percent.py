@@ -6,6 +6,10 @@ from ..css import resolve_math
 from ..css.functions import check_math
 from ..formatting_structure import boxes
 
+_BORDER_WIDTH_PROPS = (
+    'border_top_width', 'border_right_width',
+    'border_bottom_width', 'border_left_width')
+
 
 def percentage(value, computed, refer_to):
     """Return the percentage of the reference value, or the value unchanged.
@@ -92,8 +96,7 @@ def resolve_percentages(box, containing_block):
 
     collapse = box.style['border_collapse'] == 'collapse'
     # Used value == computed value
-    for side in ('top', 'right', 'bottom', 'left'):
-        prop = f'border_{side}_width'
+    for prop in _BORDER_WIDTH_PROPS:
         # border-{side}-width would have been resolved
         # during border conflict resolution for collapsed-borders
         if not (collapse and hasattr(box, prop)):
