@@ -626,14 +626,16 @@ def table_and_columns_preferred_widths(context, box, outer=True):
         for i, percentage in enumerate(intrinsic_percentages)]
 
     # Max- and min-content widths for span > 1
+    border_collapse_separate = table.style['border_collapse'] == 'separate'
+    border_spacing_x = table.style['border_spacing'][0]
     for cell in colspan_cells:
         min_content = min_content_width(context, cell)
         max_content = max_content_width(context, cell)
         column_slice = slice(cell.grid_x, cell.grid_x + cell.colspan)
         columns_min_content = sum(min_content_widths[column_slice])
         columns_max_content = sum(max_content_widths[column_slice])
-        if table.style['border_collapse'] == 'separate':
-            spacing = (cell.colspan - 1) * table.style['border_spacing'][0]
+        if border_collapse_separate:
+            spacing = (cell.colspan - 1) * border_spacing_x
         else:
             spacing = 0
 
