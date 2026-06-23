@@ -368,9 +368,30 @@ Include PDF Forms
 
 By default, form fields are transformed into pure text and graphical shapes
 when exported to PDF. But WeasyPrint gives the possibility to generate real PDF
-forms that can be filled with a PDF reader. These forms can even send requests
-with the data filled in the PDF, just as the same form would do in a web
-browser.
+forms (PDF ``AcroForm`` fields) that can be filled with a PDF reader. These
+forms can even send requests with the data filled in the PDF, just as the same
+form would do in a web browser.
+
+The following HTML controls are turned into PDF form fields:
+
+================================ ====================================
+HTML control                     PDF form field
+================================ ====================================
+``<input type="text">``          text field
+``<input type="password">``      text field (password flag)
+``<input type="file">``          text field (file-select flag)
+``<textarea>``                   multiline text field
+``<input type="checkbox">``      check box
+``<input type="radio">``         radio button group
+``<select>``                     choice field (drop-down combo box)
+``<select multiple>``            choice field (multiple-selection list)
+``<button>``, submit inputs      push button with form-submission action
+================================ ====================================
+
+Current values are preserved: the ``value`` attribute, ``checked`` check boxes
+and radio buttons, ``selected`` options, ``textarea`` text content, and the
+``maxlength`` attribute on text fields. Submit buttons use the enclosing
+``<form>`` element's ``action`` and ``method`` attributes.
 
 To transform all HTML forms into PDF forms, you can use the ``--pdf-forms`` CLI
 option or ``pdf_forms`` Python parameter.
@@ -411,6 +432,18 @@ can help to override this style.
 PDF forms support can be quite poor depending on the PDF reader you use. If a
 feature doesn’t work for you, please check that this feature is actually
 supported by your PDF reader before reporting a bug.
+
+Check boxes and radio buttons are exported with their own appearance streams,
+so they display consistently. Text and choice fields instead rely on the PDF
+``NeedAppearances`` flag, meaning the PDF reader regenerates their visual
+appearance when the document is opened. As a result, the contents of a
+prefilled text field may appear blank in viewers that ignore this flag, until
+the field is focused. Some printing and form-flattening tools are affected by
+the same limitation.
+
+The following higher-level form features are **not** supported: digital
+signature fields, JavaScript-based field validation, formatting or calculated
+fields, reset buttons, and conditional (dependent) field logic.
 
 
 Define PDF Metadata
