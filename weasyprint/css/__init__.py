@@ -1184,7 +1184,7 @@ class ComputedStyle(dict):
             # https://www.w3.org/TR/CSS21/visuren.html#dis-pos-flo.
             self.specified[key] = value
 
-        if check_math(value):
+        if type(value) is not str and check_math(value):
             solved_tokens = []
             values = value if type(value) is tuple else (value,)
             try:
