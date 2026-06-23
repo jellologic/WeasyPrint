@@ -143,8 +143,20 @@ def register_logical(names, prefixes=('',), suffixes=('',)):
                         property_name = f'{prefix}_{property_name}'
                     if suffix:
                         property_name = f'{property_name}_{suffix}'
-                    PHYSICAL_FUNCTIONS[property_name] = partial(
+                    bound = partial(
                         function, name=name, prefix=prefix, suffix=suffix)
+                    cache = {}
+
+                    def cached(block, inline, bound=bound, cache=cache):
+                        key = (block, inline)
+                        try:
+                            return cache[key]
+                        except KeyError:
+                            result = cache[key] = bound(
+                                block=block, inline=inline)
+                            return result
+
+                    PHYSICAL_FUNCTIONS[property_name] = cached
         return function
     return decorator
 
