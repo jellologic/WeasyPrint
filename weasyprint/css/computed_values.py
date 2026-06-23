@@ -38,6 +38,13 @@ BORDER_WIDTH_KEYWORDS = {
 }
 assert INITIAL_VALUES['border_top_width'] == BORDER_WIDTH_KEYWORDS['medium']
 
+# Map each *-width property to its sibling *-style property, avoiding a
+# per-call str.replace on the hot border_width path.
+BORDER_WIDTH_STYLE_KEYS = {
+    name: name.replace('width', 'style') for name in (
+        'border_top_width', 'border_right_width', 'border_left_width',
+        'border_bottom_width', 'column_rule_width', 'outline_width')}
+
 # https://www.w3.org/TR/CSS21/fonts.html#propdef-font-weight
 FONT_WEIGHT_RELATIVE = {
     'bolder': {
@@ -421,7 +428,7 @@ def image_orientation(style, name, values):
 @register_computer('outline-width')
 def border_width(style, name, value):
     """Compute the ``border-*-width`` properties."""
-    border_style = style[name.replace('width', 'style')]
+    border_style = style[BORDER_WIDTH_STYLE_KEYS[name]]
     if border_style in ('none', 'hidden'):
         return 0
 
