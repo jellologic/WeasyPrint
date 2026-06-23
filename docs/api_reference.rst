@@ -859,8 +859,12 @@ The ``resize``, ``cursor``, ``caret-*`` and ``nav-*`` properties are **not**
 supported.
 
 The ``appearance`` property is supported. When set to ``auto``, it displays
-form fields as PDF form fields (supported for text inputs, check boxes, text
-areas, and select only).
+form fields as PDF form fields. The following controls are supported: text
+inputs (including ``password``, with the ``maxlength`` attribute honored),
+``textarea`` multiline fields, check boxes, radio button groups, ``select``
+drop-downs and multiple-selection lists, and ``button``/submit controls
+(generating a form-submission action). See :ref:`Include PDF Forms` for
+details.
 
 The ``accent-color`` property is **not** supported.
 
