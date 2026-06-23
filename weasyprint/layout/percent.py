@@ -9,6 +9,7 @@ from ..formatting_structure import boxes
 _BORDER_WIDTH_PROPS = (
     'border_top_width', 'border_right_width',
     'border_bottom_width', 'border_left_width')
+_MIN_PROPS = ('min_width', 'min_height')
 
 
 def percentage(value, computed, refer_to):
@@ -36,11 +37,12 @@ def resolve_one_percentage(box, property_name, refer_to):
 
     """
     # box.style has computed values
-    value = box.style[property_name]
+    style = box.style
+    value = style[property_name]
     # box attributes are used values
-    percent = percentage(value, box.style, refer_to)
+    percent = percentage(value, style, refer_to)
     setattr(box, property_name, percent)
-    if property_name in ('min_width', 'min_height') and percent == 'auto':
+    if percent == 'auto' and property_name in _MIN_PROPS:
         setattr(box, property_name, 0)
 
 
