@@ -1044,12 +1044,12 @@ class AnonymousStyle(dict):
         return copy
 
     def __missing__(self, key):
-        if key in INHERITED or key[:2] == '__':
+        if key in INHERITED or key.startswith('__'):
             value = self[key] = self.parent_style[key]
         elif key == 'page':
             # page is not inherited but taken from the ancestor if 'auto'
             value = self[key] = self.parent_style[key]
-        elif key[:16] == 'text_decoration_':
+        elif key.startswith('text_decoration_'):
             value = self[key] = text_decoration(
                 key, INITIAL_VALUES[key], self.parent_style[key], cascaded=False)
         else:
@@ -1104,14 +1104,14 @@ class ComputedStyle(dict):
         else:
             # Property not defined in cascaded properties, define as inherited
             # or initial value.
-            if key in INHERITED or key[:2] == '__':
+            if key in INHERITED or key.startswith('__'):
                 value = 'inherit'
             else:
                 value = 'initial'
             weight = (0, 0, (0, 0, 0))
             pending = False
 
-        wanted_key = key.replace('_', '-')
+        wanted_key = None
         if logical_function := PHYSICAL_FUNCTIONS.get(key):
             # TODO: use writing-mode and text-orientation.
             logical_key = logical_function(block='ttb', inline=self['direction'])
@@ -1138,12 +1138,14 @@ class ComputedStyle(dict):
                 else:
                     solved_tokens.extend(tokens)
             try:
+                if wanted_key is None:
+                    wanted_key = key.replace('_', '-')
                 value = value.solve(solved_tokens, wanted_key)
             except InvalidValues:
                 if key in INHERITED and parent_style is not None:
                     # Values in parent_style are already computed.
                     self[key] = value = parent_style[key]
-                elif key[:2] == '__':
+                elif key.startswith('__'):
                     value = None
                 else:
                     value = INITIAL_VALUES[key]
@@ -1152,7 +1154,7 @@ class ComputedStyle(dict):
                         self[key] = value
 
         if value == 'initial':
-            value = [] if key[:2] == '__' else INITIAL_VALUES[key]
+            value = [] if key.startswith('__') else INITIAL_VALUES[key]
             if key not in INITIAL_NOT_COMPUTED:
                 # The value is the same as when computed.
                 self[key] = value
@@ -1160,7 +1162,7 @@ class ComputedStyle(dict):
             # Values in parent_style are already computed.
             self[key] = value = parent_style[key]
 
-        if key[:16] == 'text_decoration_' and parent_style is not None:
+        if key.startswith('text_decoration_') and parent_style is not None:
             # Text decorations are not inherited but propagated. See
             # https://www.w3.org/TR/css-text-decor-3/#line-decoration.
             if key in COMPUTER_FUNCTIONS:
@@ -1182,7 +1184,7 @@ class ComputedStyle(dict):
             # https://www.w3.org/TR/CSS21/visuren.html#dis-pos-flo.
             self.specified[key] = value
 
-        if check_math(value):
+        if type(value) is not str and check_math(value):
             solved_tokens = []
             values = value if type(value) is tuple else (value,)
             try:

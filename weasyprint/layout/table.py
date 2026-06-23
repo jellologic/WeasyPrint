@@ -34,7 +34,8 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
     column_widths = table.column_widths
     column_positions = table.column_positions = []
     rows_left_x = table.content_box_x() + border_spacing_x
-    if table.style['direction'] == 'ltr':
+    direction_ltr = table.style['direction'] == 'ltr'
+    if direction_ltr:
         position_x = table.content_box_x()
         rows_x = position_x + border_spacing_x
         for width in column_widths:
@@ -129,7 +130,7 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
                         f'ignored {len(ignored_cells)} cells: {ignored_cells}')
                     break
                 resolve_percentages(cell, containing_block=table)
-                if table.style['direction'] == 'ltr':
+                if direction_ltr:
                     cell.position_x = column_positions[cell.grid_x]
                 else:
                     cell.position_x = column_positions[cell.grid_x + cell.colspan - 1]

@@ -928,11 +928,15 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
 
 def collapse_margin(adjoining_margins):
     """Get the amount of collapsed margin for a list of adjoining margins."""
-    margins = [0]  # add 0 to make sure that max/min don’t get an empty list
-    margins.extend(adjoining_margins)
-    positives = (m for m in margins if m >= 0)
-    negatives = (m for m in margins if m <= 0)
-    return max(positives) + min(negatives)
+    # Seed with 0 so empty input yields 0 (matching the previous [0] seed).
+    pos = 0
+    neg = 0
+    for m in adjoining_margins:
+        if m > pos:
+            pos = m
+        elif m < neg:
+            neg = m
+    return pos + neg
 
 
 def block_level_page_break(sibling_before, sibling_after):

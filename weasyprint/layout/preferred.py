@@ -19,6 +19,16 @@ from ..formatting_structure import boxes
 from ..text.line_break import can_break_text, split_first_line
 from .replaced import default_image_sizing
 
+# Pre-built margin/padding property names for margin_width(), keyed on
+# (left, right), to avoid rebuilding the list on every call.
+_MARGIN_WIDTH_SIDES = {
+    (True, True): (
+        'margin_left', 'padding_left', 'margin_right', 'padding_right'),
+    (True, False): ('margin_left', 'padding_left'),
+    (False, True): ('margin_right', 'padding_right'),
+    (False, False): (),
+}
+
 
 def shrink_to_fit(context, box, available_content_width):
     """Return the shrink-to-fit width of ``box``.
@@ -170,10 +180,7 @@ def margin_width(box, width, left=True, right=True):
     # It is a set of computed values for border-left-width, padding-left,
     # padding-right, and border-right-width (along with zero values for
     # margin-left and margin-right)
-    for value in (
-        (['margin_left', 'padding_left'] if left else []) +
-        (['margin_right', 'padding_right'] if right else [])
-    ):
+    for value in _MARGIN_WIDTH_SIDES[left, right]:
         style_value = box.style[value]
         if style_value != 'auto' and not check_math(style_value):
             if style_value.unit.lower() == 'px':
@@ -619,14 +626,16 @@ def table_and_columns_preferred_widths(context, box, outer=True):
         for i, percentage in enumerate(intrinsic_percentages)]
 
     # Max- and min-content widths for span > 1
+    border_collapse_separate = table.style['border_collapse'] == 'separate'
+    border_spacing_x = table.style['border_spacing'][0]
     for cell in colspan_cells:
         min_content = min_content_width(context, cell)
         max_content = max_content_width(context, cell)
         column_slice = slice(cell.grid_x, cell.grid_x + cell.colspan)
         columns_min_content = sum(min_content_widths[column_slice])
         columns_max_content = sum(max_content_widths[column_slice])
-        if table.style['border_collapse'] == 'separate':
-            spacing = (cell.colspan - 1) * table.style['border_spacing'][0]
+        if border_collapse_separate:
+            spacing = (cell.colspan - 1) * border_spacing_x
         else:
             spacing = 0
 
