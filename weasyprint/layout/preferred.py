@@ -19,6 +19,16 @@ from ..formatting_structure import boxes
 from ..text.line_break import can_break_text, split_first_line
 from .replaced import default_image_sizing
 
+# Pre-built margin/padding property names for margin_width(), keyed on
+# (left, right), to avoid rebuilding the list on every call.
+_MARGIN_WIDTH_SIDES = {
+    (True, True): (
+        'margin_left', 'padding_left', 'margin_right', 'padding_right'),
+    (True, False): ('margin_left', 'padding_left'),
+    (False, True): ('margin_right', 'padding_right'),
+    (False, False): (),
+}
+
 
 def shrink_to_fit(context, box, available_content_width):
     """Return the shrink-to-fit width of ``box``.
@@ -170,10 +180,7 @@ def margin_width(box, width, left=True, right=True):
     # It is a set of computed values for border-left-width, padding-left,
     # padding-right, and border-right-width (along with zero values for
     # margin-left and margin-right)
-    for value in (
-        (['margin_left', 'padding_left'] if left else []) +
-        (['margin_right', 'padding_right'] if right else [])
-    ):
+    for value in _MARGIN_WIDTH_SIDES[left, right]:
         style_value = box.style[value]
         if style_value != 'auto' and not check_math(style_value):
             if style_value.unit.lower() == 'px':
