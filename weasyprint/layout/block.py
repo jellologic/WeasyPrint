@@ -746,7 +746,10 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
                     new_child, child, box, out_of_flow_resume_at)
             if child.is_outside_marker:
                 new_child.position_x = box.border_box_x()
-                if child.style['direction'] == 'rtl':
+                # ``marker-side`` (via ``outside_marker_at_left``) decides
+                # which side the marker sits on. When not on the left, anchor
+                # the marker at the right edge of the list item.
+                if not child.outside_marker_at_left:
                     new_child.position_x += box.width + box.padding_right
 
         elif isinstance(child, boxes.LineBox):

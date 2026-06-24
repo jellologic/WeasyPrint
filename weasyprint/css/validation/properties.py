@@ -1043,6 +1043,13 @@ def list_style_position(keyword):
 
 
 @property()
+@single_keyword
+def marker_side(keyword):
+    """``marker-side`` property validation."""
+    return keyword in ('match-self', 'match-parent')
+
+
+@property()
 @single_token
 def list_style_type(token):
     """``list-style-type`` property validation."""

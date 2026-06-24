@@ -68,7 +68,11 @@ def absolute_width(box, context, cb_x, cb_y, cb_width, cb_height):
             paddings_borders + box.margin_left + box.margin_right)
         box.width = shrink_to_fit(context, box, available_width)
         if box.is_outside_marker:
-            translate_box_width = ltr
+            # ``marker-side`` (via ``outside_marker_at_left``) decides which
+            # side the marker sits on, independently of the box's direction.
+            # When on the left, the marker is shifted left by its own width;
+            # otherwise it keeps its (line-right) static position.
+            translate_box_width = box.outside_marker_at_left
         elif not ltr:
             translate_box_width = True
             translate_x = default_translate_x + available_width

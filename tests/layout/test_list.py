@@ -42,6 +42,36 @@ def test_lists_style(inside, style, character):
     assert content.text == 'abc'
 
 
+@assert_no_logs
+@pytest.mark.parametrize(('marker_side', 'on_left'), [
+    ('match-self', False),
+    ('match-parent', True),
+])
+def test_lists_marker_side(marker_side, on_left):
+    # ``marker-side`` controls which side an outside marker sits on.
+    # An RTL list item inside an LTR parent: with ``match-self`` the marker
+    # follows the item's own (RTL) direction and sits on the right; with
+    # ``match-parent`` it follows the LTR parent and sits on the left.
+    page, = render_pages('''
+      <style>
+        body { margin: 0; direction: ltr }
+        ul { margin: 0 50px }
+        li { direction: rtl; marker-side: %s }
+      </style>
+      <ul><li>abc</li></ul>
+    ''' % marker_side)
+    html, = page.children
+    body, = html.children
+    unordered_list, = body.children
+    list_item, = unordered_list.children
+    marker, line_container = list_item.children
+    assert marker.is_outside_marker
+    if on_left:
+        assert marker.position_x == list_item.position_x - marker.width
+    else:
+        assert marker.position_x == list_item.position_x + list_item.width
+
+
 def test_lists_empty_item():
     # Regression test for #873.
     page, = render_pages('''

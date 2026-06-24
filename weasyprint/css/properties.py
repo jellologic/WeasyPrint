@@ -291,6 +291,7 @@ INITIAL_VALUES = {
     'list_style_image': ('none', None),
     'list_style_position': 'outside',
     'list_style_type': 'disc',
+    'marker_side': 'match-self',
 
     # Proprietary
     'anchor': None,  # computed value of 'none'
@@ -348,6 +349,7 @@ INHERITED = {
     'list_style_image',
     'list_style_position',
     'list_style_type',
+    'marker_side',
     'orphans',
     'overflow_wrap',
     'quotes',
