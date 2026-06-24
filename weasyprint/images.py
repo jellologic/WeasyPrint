@@ -57,6 +57,23 @@ class RasterImage:
         self.width = pillow_image.width
         self.height = pillow_image.height
         self.ratio = (self.width / self.height) if self.height != 0 else math.inf
+
+        # Embedded image resolution in dots-per-inch, as stored in the image
+        # metadata (used by ``image-resolution: from-image``). Pillow exposes
+        # this through ``info['dpi']`` as an (x, y) tuple for the formats that
+        # support it (PNG, JPEG, TIFF…).
+        self.dpi = None
+        dpi = original_pillow_image.info.get('dpi')
+        if dpi:
+            try:
+                x_dpi, y_dpi = dpi
+            except (TypeError, ValueError):
+                x_dpi = y_dpi = dpi
+            # Orientation transposition may swap axes; pick the relevant value.
+            if pillow_image.width != original_pillow_image.width:
+                x_dpi, y_dpi = y_dpi, x_dpi
+            if x_dpi and y_dpi:
+                self.dpi = (float(x_dpi), float(y_dpi))
         self.optimize = optimize = options['optimize_images']
 
         # The presence of the APP14 segment indicates an Adobe image with
@@ -84,8 +101,42 @@ class RasterImage:
                 filename = None
         self.image_data = self.cache_image_data(image_data, filename)
 
-    def get_intrinsic_size(self, resolution, font_size):
-        return self.width / resolution, self.height / resolution, self.ratio
+    def get_intrinsic_size(self, image_resolution, font_size):
+        x_resolution, y_resolution = self._resolve_resolution(image_resolution)
+        return (
+            self.width / x_resolution,
+            self.height / y_resolution,
+            self.ratio,
+        )
+
+    def _resolve_resolution(self, image_resolution):
+        """Return the (x, y) resolution in dppx for ``image-resolution``.
+
+        ``image_resolution`` is the computed value of the ``image-resolution``
+        property: a number (resolution in dppx), a ``('snap', resolution)``
+        tuple, or a ``('from-image', fallback, snap)`` tuple.
+
+        """
+        # 1 dppx == 96 dpi.
+        if isinstance(image_resolution, (int, float)):
+            return image_resolution, image_resolution
+        keyword = image_resolution[0]
+        if keyword == 'snap':
+            resolution = image_resolution[1]
+            return resolution, resolution
+        # keyword == 'from-image'
+        fallback, snap = image_resolution[1], image_resolution[2]
+        if self.dpi is not None:
+            x_resolution = self.dpi[0] / 96
+            y_resolution = self.dpi[1] / 96
+        elif fallback is not None:
+            x_resolution = y_resolution = fallback
+        else:
+            x_resolution = y_resolution = 1
+        if snap:
+            x_resolution = max(1, round(x_resolution))
+            y_resolution = max(1, round(y_resolution))
+        return x_resolution, y_resolution
 
     def draw(self, stream, concrete_width, concrete_height, style):
         if self.width <= 0 or self.height <= 0:
