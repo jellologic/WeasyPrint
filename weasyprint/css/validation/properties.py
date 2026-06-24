@@ -538,6 +538,25 @@ def pdf_page_label(tokens):
     return (style, prefix, start)
 
 
+@property('layer', proprietary=True)
+@single_token
+def layer(token):
+    """``-weasy-layer`` property validation.
+
+    Assigns an element (and its descendants) to a named PDF optional content
+    group (layer). Syntax: ``none | <string> | <custom-ident>``. The value is
+    normalized to either ``'none'`` or the layer name string.
+
+    """
+    if get_keyword(token) == 'none':
+        return 'none'
+    if token.type == 'string':
+        return token.value
+    if name := get_custom_ident(token):
+        if name.lower() != 'none':
+            return name
+
+
 @property('outline-style')
 @single_keyword
 def outline_style(keyword):

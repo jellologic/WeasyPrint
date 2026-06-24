@@ -14,7 +14,7 @@ from .fonts import Font
 class Stream(pydyf.Stream):
     """PDF stream object with extra features."""
     def __init__(self, fonts, page_rectangle, resources, images, tags, color_profiles,
-                 output_intent, *args, **kwargs):
+                 output_intent, *args, optional_content_groups=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.page_rectangle = page_rectangle
         self._fonts = fonts
@@ -23,6 +23,12 @@ class Stream(pydyf.Stream):
         self._tags = tags
         self._color_profiles = color_profiles
         self._output_intent = output_intent
+        # Shared document-wide registry mapping a layer name to its optional
+        # content group (OCG) dictionary. Populated lazily as elements using
+        # ``-weasy-layer`` are drawn. Stays empty (and thus emits nothing) for
+        # documents that never use the feature.
+        self._optional_content_groups = (
+            {} if optional_content_groups is None else optional_content_groups)
         self._current_color = self._current_color_stroke = None
         self._current_alpha = self._current_alpha_stroke = None
         self._current_font = self._current_font_size = None
@@ -51,6 +57,8 @@ class Stream(pydyf.Stream):
             kwargs['output_intent'] = self._output_intent
         if 'compress' not in kwargs:
             kwargs['compress'] = self.compress
+        if 'optional_content_groups' not in kwargs:
+            kwargs['optional_content_groups'] = self._optional_content_groups
         return Stream(**kwargs)
 
     @property
@@ -292,6 +300,46 @@ class Stream(pydyf.Stream):
         finally:
             if self._tags is not None:
                 super().end_marked_content()
+
+    @contextmanager
+    def optional_content(self, name):
+        """Wrap drawing in an optional content (layer) marked-content block.
+
+        Emits ``/OC /<key> BDC`` ... ``EMC`` where ``<key>`` references an OCG
+        registered in this stream's ``/Properties`` resources. The OCG itself
+        is shared document-wide so every element with the same ``-weasy-layer``
+        name belongs to a single toggleable PDF layer.
+
+        """
+        groups = self._optional_content_groups
+        ocg = groups.get(name)
+        if ocg is None:
+            ocg = pydyf.Dictionary({
+                'Type': '/OCG',
+                'Name': pydyf.String(name),
+            })
+            groups[name] = ocg
+
+        # Register the OCG in this stream's Properties resources under a stable
+        # per-stream key and reference it from the marked-content operator.
+        properties = self._resources.get('Properties')
+        if properties is None:
+            properties = pydyf.Dictionary()
+            self._resources['Properties'] = properties
+        key = None
+        for existing_key, existing in properties.items():
+            if existing is ocg:
+                key = existing_key
+                break
+        if key is None:
+            key = f'oc{len(properties)}'
+            properties[key] = ocg
+
+        self.stream.append(f'/OC /{key} BDC')
+        try:
+            yield
+        finally:
+            self.stream.append(b'EMC')
 
     @contextmanager
     def artifact(self):

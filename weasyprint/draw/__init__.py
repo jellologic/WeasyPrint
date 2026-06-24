@@ -329,70 +329,18 @@ def draw_stacking_context(stream, stacking_context):
         if not isinstance(box, boxes.PageBox):
             apply_clip_path(stream, box)
 
-        # Point 1 is done in draw_page.
+        # Wrap the whole stacking context (background, border and content) in a
+        # PDF optional content group (layer) when ``-weasy-layer`` is set. This
+        # makes the element toggleable in a viewer's Layers panel.
+        layer = box.style['layer']
+        layer_context = (
+            stream.optional_content(layer) if layer != 'none'
+            else nullcontext())
+        with layer_context:
+            # Point 1 is done in draw_page.
 
-        # Point 2.
-        if isinstance(box, (boxes.BlockBox, boxes.MarginBox, boxes.InlineBlockBox,
-                            boxes.TableCellBox, boxes.FlexContainerBox,
-                            boxes.GridContainerBox, boxes.ReplacedBox)):
-            set_mask_border(stream, box)
-            # The canvas background was removed by layout_backgrounds.
-            draw_box_shadow(stream, box, inset=False)
-            draw_background(stream, box.background)
-            draw_box_shadow(stream, box, inset=True)
-            draw_border(stream, box)
-
-        with stream.stacked():
-            # Dont clip the page box, see #35.
-            clip = (
-                box.style['overflow'] != 'visible' and
-                not isinstance(box, boxes.PageBox))
-            if clip:
-                # Only clip the content and the children:
-                # - the background is already clipped,
-                # - the border must *not* be clipped.
-                rounded_box(stream, box.rounded_padding_box())
-                stream.clip()
-                stream.end()
-
-            # Point 3.
-            for child_context in stacking_context.negative_z_contexts:
-                draw_stacking_context(stream, child_context)
-
-            # Point 4.
-            for block in stacking_context.block_level_boxes:
-                set_mask_border(stream, block)
-
-                if isinstance(block, boxes.TableBox):
-                    draw_table(stream, block)
-                else:
-                    draw_box_shadow(stream, block, inset=False)
-                    draw_background(stream, block.background)
-                    draw_box_shadow(stream, block, inset=True)
-                    draw_border(stream, block)
-
-            # Point 5.
-            for child_context in stacking_context.float_contexts:
-                draw_stacking_context(stream, child_context)
-
-            # Point 6.
-            if isinstance(box, boxes.InlineBox):
-                draw_inline_level(stream, stacking_context.page, box)
-
-            # Point 7.
-            draw_block_level(
-                stacking_context.page, stream, {box: stacking_context.blocks_and_cells})
-
-            # Point 8.
-            for child_context in stacking_context.zero_z_contexts:
-                draw_stacking_context(stream, child_context)
-
-            # Point 9.
-            for child_context in stacking_context.positive_z_contexts:
-                draw_stacking_context(stream, child_context)
-
-        # Point 10.
-        draw_outline(stream, box)
+            # Point 2.
+            _draw_stacking_context_content(stream, stacking_context)
 
         if box.style['opacity'] < 1:
             group_id = stream.id
@@ -400,6 +348,79 @@ def draw_stacking_context(stream, stacking_context):
             with stream.stacked():
                 stream.set_alpha(box.style['opacity'], stroke=True, fill=True)
                 stream.draw_x_object(group_id)
+
+
+def _draw_stacking_context_content(stream, stacking_context):
+    """Draw the painting-order content of a stacking context.
+
+    Split out from :func:`draw_stacking_context` so the whole sequence can be
+    wrapped in an optional content (layer) marked-content block when needed.
+
+    """
+    box = stacking_context.box
+
+    # Point 2.
+    if isinstance(box, (boxes.BlockBox, boxes.MarginBox, boxes.InlineBlockBox,
+                        boxes.TableCellBox, boxes.FlexContainerBox,
+                        boxes.GridContainerBox, boxes.ReplacedBox)):
+        set_mask_border(stream, box)
+        # The canvas background was removed by layout_backgrounds.
+        draw_box_shadow(stream, box, inset=False)
+        draw_background(stream, box.background)
+        draw_box_shadow(stream, box, inset=True)
+        draw_border(stream, box)
+
+    with stream.stacked():
+        # Dont clip the page box, see #35.
+        clip = (
+            box.style['overflow'] != 'visible' and
+            not isinstance(box, boxes.PageBox))
+        if clip:
+            # Only clip the content and the children:
+            # - the background is already clipped,
+            # - the border must *not* be clipped.
+            rounded_box(stream, box.rounded_padding_box())
+            stream.clip()
+            stream.end()
+
+        # Point 3.
+        for child_context in stacking_context.negative_z_contexts:
+            draw_stacking_context(stream, child_context)
+
+        # Point 4.
+        for block in stacking_context.block_level_boxes:
+            set_mask_border(stream, block)
+
+            if isinstance(block, boxes.TableBox):
+                draw_table(stream, block)
+            else:
+                draw_box_shadow(stream, block, inset=False)
+                draw_background(stream, block.background)
+                draw_box_shadow(stream, block, inset=True)
+                draw_border(stream, block)
+
+        # Point 5.
+        for child_context in stacking_context.float_contexts:
+            draw_stacking_context(stream, child_context)
+
+        # Point 6.
+        if isinstance(box, boxes.InlineBox):
+            draw_inline_level(stream, stacking_context.page, box)
+
+        # Point 7.
+        draw_block_level(
+            stacking_context.page, stream, {box: stacking_context.blocks_and_cells})
+
+        # Point 8.
+        for child_context in stacking_context.zero_z_contexts:
+            draw_stacking_context(stream, child_context)
+
+        # Point 9.
+        for child_context in stacking_context.positive_z_contexts:
+            draw_stacking_context(stream, child_context)
+
+    # Point 10.
+    draw_outline(stream, box)
 
 
 def draw_background(stream, bg, clip_box=True, bleed=None, marks=()):

@@ -285,6 +285,17 @@ def _use_references(pdf, resources, images, color_profiles):
         if 'SMask' in alpha and 'G' in alpha['SMask']:
             alpha['SMask']['G'] = alpha['SMask']['G'].reference
 
+    # Optional content groups (PDF layers) referenced by marked content
+    properties = resources.get('Properties')
+    if properties is not None:
+        for key, ocg in properties.items():
+            if isinstance(ocg, pydyf.Object):
+                # Each OCG is a shared object: add it to the PDF once, then
+                # replace the inline dict with an indirect reference.
+                if ocg.number is None:
+                    pdf.add_object(ocg)
+                properties[key] = ocg.reference
+
 
 def generate_pdf(document, target, zoom, **options):
     # 0.75 = 72 PDF point per inch / 96 CSS pixel per inch
@@ -338,6 +349,11 @@ def generate_pdf(document, target, zoom, **options):
     pdf.add_object(resources)
     pdf_names = []
 
+    # Shared registry of optional content groups (PDF layers). Maps a layer
+    # name to its OCG dictionary. Populated as elements using ``-weasy-layer``
+    # are drawn. Stays empty for documents that never use the feature.
+    optional_content_groups = {}
+
     # Links and anchors
     page_links_and_anchors = list(resolve_links(document.pages))
 
@@ -364,7 +380,8 @@ def generate_pdf(document, target, zoom, **options):
             (right - left) / scale, (bottom - top) / scale)
         stream = Stream(
             document.fonts, page_rectangle, resources, images, tags,
-            document.color_profiles, document.output_intent, compress=compress)
+            document.color_profiles, document.output_intent, compress=compress,
+            optional_content_groups=optional_content_groups)
         stream.transform(d=-1, f=(page.height * scale))
         pdf.add_object(stream)
         page_streams.append(stream)
@@ -508,6 +525,24 @@ def generate_pdf(document, target, zoom, **options):
         if 'Names' not in pdf.catalog:
             pdf.catalog['Names'] = pydyf.Dictionary()
         pdf.catalog['Names']['Dests'] = dests
+
+    # Optional content groups (PDF layers). Build /OCProperties listing every
+    # distinct layer with a default configuration showing all of them. OCG
+    # objects were added to the PDF by _use_references when their Properties
+    # resources were resolved, so they already have references here.
+    if optional_content_groups:
+        ocgs = pydyf.Array()
+        for ocg in optional_content_groups.values():
+            assert ocg.number is not None
+            ocgs.append(ocg.reference)
+        pdf.catalog['OCProperties'] = pydyf.Dictionary({
+            'OCGs': ocgs,
+            'D': pydyf.Dictionary({
+                'Order': pydyf.Array(list(ocgs)),
+                'ON': pydyf.Array(list(ocgs)),
+                'OFF': pydyf.Array(),
+            }),
+        })
 
     # Add tags
     if pdf_tags:

@@ -1175,3 +1175,54 @@ def test_clip_path_none():
         'clip-path: none"></div>'
     )).write_pdf(uncompressed_pdf=True)
     assert b'10 10 80 80 re' not in pdf
+
+
+@assert_no_logs
+def test_layer_optional_content_group():
+    # An element with -weasy-layer is assigned to a named PDF optional content
+    # group (layer) and its drawing is wrapped in /OC ... BDC ... EMC.
+    pdf = FakeHTML(string=(
+        '<div style="-weasy-layer: foo">layered</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # The catalog gets an /OCProperties dictionary listing the OCG.
+    assert b'/OCProperties' in pdf
+    # An OCG dictionary named 'foo' is emitted.
+    assert b'/Type /OCG' in pdf
+    assert b'/Name (foo)' in pdf
+    # The content is wrapped in an optional-content marked-content block.
+    assert re.search(rb'/OC /oc\d+ BDC', pdf)
+    assert b'EMC' in pdf
+    # The page resources reference the OCG under /Properties.
+    assert b'/Properties' in pdf
+
+
+@assert_no_logs
+def test_layer_shared_and_distinct():
+    # Elements sharing a name belong to one OCG; distinct names get distinct
+    # OCGs.
+    pdf = FakeHTML(string=(
+        '<div style="-weasy-layer: foo">A</div>'
+        '<div style="-weasy-layer: bar">B</div>'
+        '<div style="-weasy-layer: foo">C</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Exactly one OCG dict per distinct name.
+    assert pdf.count(b'/Name (foo)') == 1
+    assert pdf.count(b'/Name (bar)') == 1
+    # Three marked-content blocks (one per element), the two 'foo' elements
+    # sharing the same property key.
+    blocks = re.findall(rb'/OC /(oc\d+) BDC', pdf)
+    assert len(blocks) == 3
+    assert blocks[0] == blocks[2]
+    assert blocks[0] != blocks[1]
+
+
+@assert_no_logs
+def test_layer_not_used_byte_identical():
+    # A document that never uses -weasy-layer must be unaffected: no
+    # /OCProperties, and identical bytes across runs.
+    source = '<div style="width: 50px; height: 50px; background: red">a</div>'
+    first = FakeHTML(string=source).write_pdf()
+    second = FakeHTML(string=source).write_pdf()
+    assert first == second
+    assert b'/OCProperties' not in first
+    assert b'/OCG' not in first
