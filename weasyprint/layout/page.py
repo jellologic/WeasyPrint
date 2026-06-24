@@ -14,7 +14,10 @@ from .min_max import handle_min_max_height, handle_min_max_width
 from .percent import resolve_percentages
 from .preferred import max_content_width, min_content_width
 
-PageType = namedtuple('PageType', ['side', 'blank', 'name', 'index', 'groups'])
+PageType = namedtuple(
+    'PageType', ['side', 'blank', 'name', 'index', 'groups', 'direction'])
+# Default direction to 'ltr' so existing constructions remain valid.
+PageType.__new__.__defaults__ = ('ltr',)
 
 
 class OrientedBox:
@@ -939,7 +942,8 @@ def remake_page(index, context, root_box, html):
     page_groups = page_state[3]
     name = _update_page_groups(page_groups, resume_at, next_page, root_box, blank)
     groups = tuple((name, index) for name, index, _ in page_groups)
-    page_type = PageType(side, blank, name, index, groups)
+    direction = root_box.style['direction']
+    page_type = PageType(side, blank, name, index, groups, direction)
     set_page_type_computed_styles(page_type, html, context.style_for)
 
     context.forced_break = (next_page['break'] != 'any' or next_page['page'])

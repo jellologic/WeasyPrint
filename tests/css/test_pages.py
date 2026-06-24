@@ -76,7 +76,50 @@ def test_page():
 
 
 @assert_no_logs
+def test_page_recto_verso():
+    document = FakeHTML(resource_path('doc1.html'))
+    style_for = get_all_computed_styles(
+        document, user_stylesheets=[CSS(string='''
+          @page { margin: 10px }
+          @page :recto { margin-left: 20px }
+          @page :verso { margin-right: 30px }
+        ''')])
+
+    # LTR: recto is the right page, verso is the left page.
+    page_type = PageType(
+        side='right', blank=False, name='', index=0, groups=(),
+        direction='ltr')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
+    assert style['margin_left'] == (20, 'px')  # :recto applies
+    assert style['margin_right'] == (10, 'px')  # :verso does not
+
+    page_type = PageType(
+        side='left', blank=False, name='', index=0, groups=(),
+        direction='ltr')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
+    assert style['margin_left'] == (10, 'px')  # :recto does not
+    assert style['margin_right'] == (30, 'px')  # :verso applies
+
+    # RTL: recto is the left page, verso is the right page.
+    page_type = PageType(
+        side='left', blank=False, name='', index=0, groups=(),
+        direction='rtl')
+    set_page_type_computed_styles(page_type, document, style_for)
+    style = style_for(page_type)
+    assert style['margin_left'] == (20, 'px')  # :recto applies
+    assert style['margin_right'] == (10, 'px')  # :verso does not
+
+
+@assert_no_logs
 @pytest.mark.parametrize(('style', 'selectors'), [
+    ('@page :recto {}', [{
+        'side': 'recto', 'blank': None, 'first': None, 'name': None,
+        'index': None, 'specificity': [0, 0, 1]}]),
+    ('@page :verso {}', [{
+        'side': 'verso', 'blank': None, 'first': None, 'name': None,
+        'index': None, 'specificity': [0, 0, 1]}]),
     ('@page {}', [{
         'side': None, 'blank': None, 'first': None, 'name': None,
         'index': None, 'specificity': [0, 0, 0]}]),

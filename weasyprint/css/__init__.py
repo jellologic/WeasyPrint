@@ -241,7 +241,16 @@ class StyleFor:
 
     @staticmethod
     def _page_type_match(page_selector_type, page_type):
-        if page_selector_type.side not in (None, page_type.side):
+        side = page_selector_type.side
+        if side in ('recto', 'verso'):
+            # Resolve against page progression direction:
+            # recto is the right page in LTR (left in RTL), verso the opposite.
+            direction = getattr(page_type, 'direction', 'ltr')
+            if direction == 'ltr':
+                side = 'right' if side == 'recto' else 'left'
+            else:
+                side = 'left' if side == 'recto' else 'right'
+        if side not in (None, page_type.side):
             return False
         if page_selector_type.blank not in (None, page_type.blank):
             return False
@@ -1351,7 +1360,7 @@ def parse_page_selectors(rule):
     Return a list of page data if the rule is correctly parsed. Page data are a
     dict containing:
 
-    - 'side' ('left', 'right' or None),
+    - 'side' ('left', 'right', 'recto', 'verso' or None),
     - 'blank' (True or None),
     - 'first' (True or None),
     - 'index' (page number or None),
@@ -1402,7 +1411,7 @@ def parse_page_selectors(rule):
                     ident = tokens.pop(0)
                     pseudo_class = ident.lower_value
 
-                    if pseudo_class in ('left', 'right'):
+                    if pseudo_class in ('left', 'right', 'recto', 'verso'):
                         if types['side'] and types['side'] != pseudo_class:
                             return None
                         types['side'] = pseudo_class
