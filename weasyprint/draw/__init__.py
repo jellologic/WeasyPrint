@@ -11,8 +11,254 @@ from ..layout.background import BackgroundLayer
 from ..matrix import Matrix
 from ..stacking import StackingContext
 from .border import draw_border, draw_line, draw_outline, rounded_box, set_mask_border
-from .color import styled_color
+from .color import get_color, styled_color
 from .text import draw_text
+
+
+def _adjust_radius(radius, delta):
+    """Adjust a single corner ``(rx, ry)`` for spread, per CSS spec.
+
+    A zero corner radius stays sharp; a positive one grows/shrinks by
+    ``delta`` (clamped to zero).
+
+    """
+    rx, ry = radius
+    rx = 0 if rx == 0 else max(0, rx + delta)
+    ry = 0 if ry == 0 else max(0, ry + delta)
+    return (rx, ry)
+
+
+def _spread_radii(radii, delta, dx, dy):
+    """Grow (``delta`` > 0) or shrink a rounded-box, then translate it."""
+    x, y, w, h, tl, tr, br, bl = radii
+    return (
+        x - delta + dx, y - delta + dy, w + 2 * delta, h + 2 * delta,
+        _adjust_radius(tl, delta), _adjust_radius(tr, delta),
+        _adjust_radius(br, delta), _adjust_radius(bl, delta))
+
+
+def _resolve_clip_length(value, reference):
+    """Resolve a clip-path ``Dimension`` (pixels or percentage) to pixels."""
+    if value.unit == '%':
+        return value.value / 100 * reference
+    # Already computed to pixels.
+    return value.value
+
+
+def apply_clip_path(stream, box):
+    """Clip ``stream`` to the box ``clip-path`` basic shape, if any.
+
+    The reference box is the border box. Returns ``True`` if a clip was
+    applied (a path plus ``W n`` operators were emitted).
+
+    """
+    clip = box.style['clip_path']
+    if clip == 'none':
+        return False
+
+    x = box.border_box_x()
+    y = box.border_box_y()
+    width = box.border_width()
+    height = box.border_height()
+
+    shape = clip[0]
+    if shape == 'inset':
+        top_d, right_d, bottom_d, left_d = clip[1]
+        top = _resolve_clip_length(top_d, height)
+        right = _resolve_clip_length(right_d, width)
+        bottom = _resolve_clip_length(bottom_d, height)
+        left = _resolve_clip_length(left_d, width)
+        rect_x = x + left
+        rect_y = y + top
+        rect_width = width - left - right
+        rect_height = height - top - bottom
+        if rect_width <= 0 or rect_height <= 0:
+            # Empty clip: nothing is visible.
+            stream.rectangle(x, y, 0, 0)
+            stream.clip()
+            stream.end()
+            return True
+        stream.rectangle(rect_x, rect_y, rect_width, rect_height)
+        stream.clip()
+        stream.end()
+        return True
+
+    elif shape in ('circle', 'ellipse'):
+        position = clip[-1]
+        cx = x + _resolve_clip_length(position[0], width)
+        cy = y + _resolve_clip_length(position[1], height)
+        if shape == 'circle':
+            radius = clip[1]
+            if radius == 'closest-side':
+                rx = ry = min(
+                    abs(cx - x), abs(x + width - cx),
+                    abs(cy - y), abs(y + height - cy))
+            elif radius == 'farthest-side':
+                rx = ry = max(
+                    abs(cx - x), abs(x + width - cx),
+                    abs(cy - y), abs(y + height - cy))
+            else:
+                # Percentages resolve against sqrt(w² + h²) / sqrt(2).
+                reference = (width ** 2 + height ** 2) ** 0.5 / (2 ** 0.5)
+                rx = ry = _resolve_clip_length(radius, reference)
+        else:
+            rx_value, ry_value = clip[1]
+            rx = _clip_ellipse_radius(rx_value, cx, x, width)
+            ry = _clip_ellipse_radius(ry_value, cy, y, height)
+        if rx <= 0 or ry <= 0:
+            stream.rectangle(x, y, 0, 0)
+            stream.clip()
+            stream.end()
+            return True
+        _ellipse_path(stream, cx, cy, rx, ry)
+        stream.clip()
+        stream.end()
+        return True
+
+    elif shape == 'polygon':
+        _, fill_rule, points = clip
+        resolved = [
+            (x + _resolve_clip_length(px, width),
+             y + _resolve_clip_length(py, height))
+            for px, py in points]
+        stream.move_to(*resolved[0])
+        for point in resolved[1:]:
+            stream.line_to(*point)
+        stream.close()
+        stream.clip(even_odd=(fill_rule == 'evenodd'))
+        stream.end()
+        return True
+
+    return False
+
+
+def _clip_ellipse_radius(value, center, origin, size):
+    if value == 'closest-side':
+        return min(abs(center - origin), abs(origin + size - center))
+    elif value == 'farthest-side':
+        return max(abs(center - origin), abs(origin + size - center))
+    return _resolve_clip_length(value, size)
+
+
+def _ellipse_path(stream, cx, cy, rx, ry):
+    """Emit an ellipse path centered at ``(cx, cy)`` using four Bézier arcs."""
+    kappa = 0.5522847498307936  # 4/3 * (sqrt(2) - 1)
+    ox = rx * kappa
+    oy = ry * kappa
+    stream.move_to(cx + rx, cy)
+    stream.curve_to(cx + rx, cy + oy, cx + ox, cy + ry, cx, cy + ry)
+    stream.curve_to(cx - ox, cy + ry, cx - rx, cy + oy, cx - rx, cy)
+    stream.curve_to(cx - rx, cy - oy, cx - ox, cy - ry, cx, cy - ry)
+    stream.curve_to(cx + ox, cy - ry, cx + rx, cy - oy, cx + rx, cy)
+    stream.close()
+
+
+def draw_box_shadow(stream, box, inset):
+    """Draw the ``box-shadow`` of a box.
+
+    If ``inset`` is true, draw the inset shadows (clipped inside the padding
+    box), otherwise draw the outer shadows (behind the box).
+
+    """
+    shadows = box.style['box_shadow']
+    if shadows == 'none':
+        return
+    # Painting order: the first shadow in the list is painted on top, so paint
+    # in reverse order.
+    for shadow in reversed(shadows):
+        is_inset, color, offset_x, offset_y, blur, spread = shadow
+        if is_inset != inset:
+            continue
+        if color is None:
+            color = get_color(box.style, 'color')
+        else:
+            color = color if color != 'currentcolor' else box.style['color']
+        if color.alpha == 0:
+            continue
+        if inset:
+            draw_inset_box_shadow(
+                stream, box, color, offset_x, offset_y, blur, spread)
+        else:
+            draw_outer_box_shadow(
+                stream, box, color, offset_x, offset_y, blur, spread)
+
+
+def draw_outer_box_shadow(stream, box, color, offset_x, offset_y, blur, spread):
+    """Draw a single outer (drop) box-shadow behind the box."""
+    with stream.artifact(), stream.stacked():
+        # Clip out the border box so the shadow only shows behind the box.
+        x1, y1, x2, y2 = stream.page_rectangle
+        stream.rectangle(x1, y1, x2 - x1, y2 - y1)
+        rounded_box(stream, box.rounded_border_box())
+        stream.clip(even_odd=True)
+        stream.end()
+
+        # Shadow shape: border box expanded by the spread radius and translated
+        # by the offset.
+        shape = _spread_radii(
+            box.rounded_border_box(), spread, offset_x, offset_y)
+        _paint_shadow_shape(stream, shape, color, blur, inset=False)
+
+
+def draw_inset_box_shadow(stream, box, color, offset_x, offset_y, blur, spread):
+    """Draw a single inset box-shadow clipped inside the padding box."""
+    with stream.artifact(), stream.stacked():
+        # Clip to the padding box so the shadow stays inside.
+        padding = box.rounded_padding_box()
+        rounded_box(stream, padding)
+        stream.clip()
+        stream.end()
+
+        # Shadow shape: padding box shrunk by the spread radius and translated
+        # by the offset. The painted region is the area *outside* this shape.
+        inner = _spread_radii(padding, -spread, offset_x, offset_y)
+        _paint_shadow_shape(stream, inner, color, blur, inset=True, clip=padding)
+
+
+def _paint_shadow_shape(stream, shape, color, blur, inset, clip=None):
+    """Fill ``shape`` with ``color``, approximating a Gaussian blur edge."""
+    if blur <= 0:
+        with stream.stacked():
+            stream.set_color(color)
+            if inset:
+                # Fill the padding box minus the inner shape (even-odd).
+                rounded_box(stream, clip)
+                rounded_box(stream, shape)
+                stream.fill(even_odd=True)
+            else:
+                rounded_box(stream, shape)
+                stream.fill()
+        return
+
+    # Blur approximation: paint concentric translucent layers feathering the
+    # edge over the blur radius. Each layer grows the shape from -blur to +blur
+    # with a triangular alpha falloff peaking at the shape edge, mimicking a
+    # Gaussian profile when accumulated.
+    layers = max(4, min(24, round(blur)))
+    base_alpha = color.alpha
+    for index in range(layers + 1):
+        ratio = index / layers
+        # Signed distance from the shape edge, from -blur (inside) to +blur.
+        grow = (ratio - 0.5) * 2 * blur
+        alpha = base_alpha * (1 - abs(ratio - 0.5) * 2) * 2 / layers
+        if alpha <= 0:
+            continue
+        layer_color = color.__class__(
+            color.space, color[:-1], alpha=min(1, alpha))
+        # Outer shadows feather outwards; inset shadows feather inwards.
+        delta = grow if not inset else -grow
+        new_shape = _spread_radii(shape, delta, 0, 0)
+        if new_shape[2] <= 0 or new_shape[3] <= 0:
+            continue
+        with stream.stacked():
+            stream.set_color(layer_color)
+            if inset:
+                rounded_box(stream, clip)
+                rounded_box(stream, new_shape)
+                stream.fill(even_odd=True)
+            else:
+                rounded_box(stream, new_shape)
+                stream.fill()
 
 
 def draw_page(page, stream):
@@ -33,6 +279,13 @@ def draw_stacking_context(stream, stacking_context):
     # See https://www.w3.org/TR/CSS2/zindex.html.
     with stream.stacked():
         box = stacking_context.box
+
+        # Apply the blend mode for the whole stacking context, see
+        # https://www.w3.org/TR/compositing-1/#mix-blend-mode.
+        blend_mode = box.style['mix_blend_mode']
+        if blend_mode != 'normal':
+            mode = blend_mode.replace('-', ' ').title().replace(' ', '')
+            stream.set_blend_mode(mode)
 
         # Apply the viewport_overflow to the html box, see #35.
         if box.is_for_root_element and (
@@ -67,6 +320,13 @@ def draw_stacking_context(stream, stacking_context):
             else:
                 return
 
+        # Apply clip-path basic shape to the whole stacking context (background,
+        # border and content), see https://www.w3.org/TR/css-masking-1/. This is
+        # done after the transform so the clip shares the element's coordinate
+        # system.
+        if not isinstance(box, boxes.PageBox):
+            apply_clip_path(stream, box)
+
         # Point 1 is done in draw_page.
 
         # Point 2.
@@ -75,7 +335,9 @@ def draw_stacking_context(stream, stacking_context):
                             boxes.GridContainerBox, boxes.ReplacedBox)):
             set_mask_border(stream, box)
             # The canvas background was removed by layout_backgrounds.
+            draw_box_shadow(stream, box, inset=False)
             draw_background(stream, box.background)
+            draw_box_shadow(stream, box, inset=True)
             draw_border(stream, box)
 
         with stream.stacked():
@@ -102,7 +364,9 @@ def draw_stacking_context(stream, stacking_context):
                 if isinstance(block, boxes.TableBox):
                     draw_table(stream, block)
                 else:
+                    draw_box_shadow(stream, block, inset=False)
                     draw_background(stream, block.background)
+                    draw_box_shadow(stream, block, inset=True)
                     draw_border(stream, block)
 
             # Point 5.
@@ -323,7 +587,9 @@ def draw_background_image(stream, layer, style):
 
 def draw_table(stream, table):
     # Draw backgrounds.
+    draw_box_shadow(stream, table, inset=False)
     draw_background(stream, table.background)
+    draw_box_shadow(stream, table, inset=True)
     for column_group in table.column_groups:
         draw_background(stream, column_group.background)
         for column in column_group.children:

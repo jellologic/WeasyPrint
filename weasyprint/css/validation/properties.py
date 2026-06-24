@@ -168,6 +168,75 @@ def color(token):
         return token
 
 
+@property()
+@comma_separated_list
+def box_shadow(tokens):
+    """``box-shadow`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+
+    inset = False
+    color = None
+    lengths = []
+    for token in tokens:
+        if get_keyword(token) == 'inset':
+            if inset:
+                return  # Duplicate 'inset'
+            inset = True
+            continue
+        length = get_length(token)
+        if length is not None:
+            if len(lengths) >= 4:
+                return  # Too many lengths
+            lengths.append(length)
+            continue
+        if color is None and parse_color(token):
+            color = token
+            continue
+        return  # Unexpected token
+
+    if not 2 <= len(lengths) <= 4:
+        return
+
+    offset_x, offset_y = lengths[0], lengths[1]
+    blur = lengths[2] if len(lengths) > 2 else Dimension(0, None)
+    spread = lengths[3] if len(lengths) > 3 else Dimension(0, None)
+    if blur.value < 0:
+        return  # blur-radius must be non-negative
+    return (inset, color, offset_x, offset_y, blur, spread)
+
+
+@property()
+@comma_separated_list
+def text_shadow(tokens):
+    """``text-shadow`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+
+    color = None
+    lengths = []
+    for token in tokens:
+        length = get_length(token)
+        if length is not None:
+            if len(lengths) >= 3:
+                return  # Too many lengths
+            lengths.append(length)
+            continue
+        if color is None and parse_color(token):
+            color = token
+            continue
+        return  # Unexpected token
+
+    if not 2 <= len(lengths) <= 3:
+        return
+
+    offset_x, offset_y = lengths[0], lengths[1]
+    blur = lengths[2] if len(lengths) > 2 else Dimension(0, None)
+    if blur.value < 0:
+        return  # blur-radius must be non-negative
+    return (color, offset_x, offset_y, blur)
+
+
 @property('background-image', wants_base_url=True)
 @comma_separated_list
 @single_token
@@ -566,6 +635,155 @@ def clip(token):
         return tuple(values)
     elif get_keyword(token) == 'auto':
         return ()
+
+
+def _clip_shape_position(tokens):
+    """Parse a basic-shape position (1 or 2 of length/percentage/keyword).
+
+    Return a ``(x, y)`` pair of ``Dimension`` values (percentages allowed),
+    or ``None`` if the tokens are not a valid position.
+
+    """
+    keywords = {
+        'left': Dimension(0, '%'), 'right': Dimension(100, '%'),
+        'top': Dimension(0, '%'), 'bottom': Dimension(100, '%'),
+        'center': Dimension(50, '%')}
+    horizontal = {'left', 'right'}
+    vertical = {'top', 'bottom'}
+    if len(tokens) == 1:
+        token = tokens[0]
+        keyword = get_keyword(token)
+        if keyword in horizontal:
+            return (keywords[keyword], keywords['center'])
+        elif keyword in vertical:
+            return (keywords['center'], keywords[keyword])
+        elif keyword == 'center':
+            return (keywords['center'], keywords['center'])
+        elif (value := get_length(token, percentage=True)) is not None:
+            return (value, keywords['center'])
+        return None
+    elif len(tokens) == 2:
+        result = [None, None]
+        for index, token in enumerate(tokens):
+            keyword = get_keyword(token)
+            if keyword in (horizontal if index == 0 else vertical):
+                result[index] = keywords[keyword]
+            elif keyword == 'center':
+                result[index] = keywords['center']
+            elif (value := get_length(token, percentage=True)) is not None:
+                result[index] = value
+            else:
+                return None
+        return tuple(result)
+    return None
+
+
+def _clip_radius(token):
+    """Parse a basic-shape radius (length, percentage, or shape-radius keyword)."""
+    keyword = get_keyword(token)
+    if keyword in ('closest-side', 'farthest-side'):
+        return keyword
+    return get_length(token, negative=False, percentage=True)
+
+
+@property()
+@single_token
+def clip_path(token):
+    """Validation for the ``clip-path`` property (basic shapes)."""
+    # See https://www.w3.org/TR/css-shapes-1/ and
+    # https://www.w3.org/TR/css-masking-1/#the-clip-path.
+    if get_keyword(token) == 'none':
+        return 'none'
+    function = Function(token)
+    if function.name is None:
+        return
+
+    if function.name == 'inset':
+        arguments = function.split_space()
+        # Optional `round <border-radius>` part is not supported: bail out so
+        # the declaration is treated as invalid rather than silently ignored.
+        lengths = []
+        for argument in arguments:
+            if get_keyword(argument) == 'round':
+                return
+            value = get_length(argument, negative=False, percentage=True)
+            if value is None:
+                return
+            lengths.append(value)
+        if not 1 <= len(lengths) <= 4:
+            return
+        # Expand to (top, right, bottom, left).
+        if len(lengths) == 1:
+            top = right = bottom = left = lengths[0]
+        elif len(lengths) == 2:
+            top = bottom = lengths[0]
+            right = left = lengths[1]
+        elif len(lengths) == 3:
+            top, (right, left), bottom = lengths[0], (lengths[1],) * 2, lengths[2]
+        else:
+            top, right, bottom, left = lengths
+        return ('inset', (top, right, bottom, left))
+
+    elif function.name in ('circle', 'ellipse'):
+        arguments = function.split_space() or []
+        radii = []
+        position = (Dimension(50, '%'), Dimension(50, '%'))
+        index = 0
+        # Read radii until the optional `at <position>` keyword.
+        at_seen = False
+        while index < len(arguments):
+            if get_keyword(arguments[index]) == 'at':
+                at_seen = True
+                index += 1
+                break
+            radius = _clip_radius(arguments[index])
+            if radius is None:
+                return
+            radii.append(radius)
+            index += 1
+        if at_seen:
+            parsed = _clip_shape_position(arguments[index:])
+            if parsed is None:
+                return
+            position = parsed
+        if function.name == 'circle':
+            if len(radii) > 1:
+                return
+            radius = radii[0] if radii else 'closest-side'
+            return ('circle', radius, position)
+        else:
+            if len(radii) not in (0, 2):
+                return
+            if not radii:
+                radii = ['closest-side', 'closest-side']
+            return ('ellipse', tuple(radii), position)
+
+    elif function.name == 'polygon':
+        parts = function.split_comma(single_tokens=False)
+        if not parts:
+            return
+        fill_rule = 'nonzero'
+        first = [
+            token for token in parts[0]
+            if token.type not in ('whitespace', 'comment')]
+        if len(first) == 1 and get_keyword(first[0]) in ('nonzero', 'evenodd'):
+            fill_rule = get_keyword(first[0])
+            parts = parts[1:]
+        points = []
+        for part in parts:
+            coordinates = [
+                token for token in part
+                if token.type not in ('whitespace', 'comment')]
+            if len(coordinates) != 2:
+                return
+            x = get_length(coordinates[0], percentage=True)
+            y = get_length(coordinates[1], percentage=True)
+            if x is None or y is None:
+                return
+            points.append((x, y))
+        if len(points) < 3:
+            return
+        return ('polygon', fill_rule, tuple(points))
 
 
 @property(wants_base_url=True)
@@ -1043,6 +1261,13 @@ def list_style_position(keyword):
 
 
 @property()
+@single_keyword
+def marker_side(keyword):
+    """``marker-side`` property validation."""
+    return keyword in ('match-self', 'match-parent')
+
+
+@property()
 @single_token
 def list_style_type(token):
     """``list-style-type`` property validation."""
@@ -1129,6 +1354,16 @@ def opacity(token):
 
 
 @property()
+@single_keyword
+def mix_blend_mode(keyword):
+    """Validation for the ``mix-blend-mode`` property."""
+    return keyword in (
+        'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+        'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference',
+        'exclusion', 'hue', 'saturation', 'color', 'luminosity')
+
+
+@property()
 @single_token
 def z_index(token):
     """Validation for the ``z-index`` property."""
@@ -1159,10 +1394,11 @@ def column_count(token):
         return 'auto'
 
 
-@property()
+@property('overflow-x')
+@property('overflow-y')
 @single_keyword
 def overflow(keyword):
-    """Validation for the ``overflow`` property."""
+    """Validation for the ``overflow-x`` and ``overflow-y`` properties."""
     return keyword in ('auto', 'visible', 'hidden', 'scroll')
 
 

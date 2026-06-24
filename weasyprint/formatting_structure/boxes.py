@@ -74,6 +74,9 @@ class Box:
     is_column = False
     is_leader = False
     is_outside_marker = False
+    # For outside list markers, whether the marker sits on the left side.
+    # Driven by ``direction`` and the ``marker-side`` property.
+    outside_marker_at_left = True
 
     # Other properties
     transformation_matrix = None

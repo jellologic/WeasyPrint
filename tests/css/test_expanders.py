@@ -999,3 +999,27 @@ def test_text_align(rule, result):
 ])
 def test_text_align_invalid(rule, reason):
     assert_invalid(f'text-align: {rule}', reason)
+
+
+@assert_no_logs
+@pytest.mark.parametrize(('rule', 'result'), [
+    ('visible', {'overflow_x': 'visible', 'overflow_y': 'visible'}),
+    ('hidden', {'overflow_x': 'hidden', 'overflow_y': 'hidden'}),
+    ('auto', {'overflow_x': 'auto', 'overflow_y': 'auto'}),
+    ('scroll', {'overflow_x': 'scroll', 'overflow_y': 'scroll'}),
+    ('hidden visible', {'overflow_x': 'hidden', 'overflow_y': 'visible'}),
+    ('scroll auto', {'overflow_x': 'scroll', 'overflow_y': 'auto'}),
+])
+def test_overflow(rule, result):
+    assert expand_to_dict(f'overflow: {rule}') == result
+
+
+@assert_no_logs
+@pytest.mark.parametrize(('rule', 'reason'), [
+    ('overflow: none', 'invalid'),
+    ('overflow: hidden visible scroll', 'invalid'),
+    ('overflow-x: none', 'invalid'),
+    ('overflow-y: 1px', 'invalid'),
+])
+def test_overflow_invalid(rule, reason):
+    assert_invalid(rule, reason)

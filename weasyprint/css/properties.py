@@ -15,6 +15,7 @@ INITIAL_VALUES = {
     'caption_side': 'top',
     'clear': 'none',
     'clip': (),  # computed value for 'auto'
+    'clip_path': 'none',
     'color': parse_color('black'),  # chosen by the user agent
     'direction': 'ltr',
     'display': ('inline', 'flow'),
@@ -67,6 +68,7 @@ INITIAL_VALUES = {
     'border_top_right_radius': (ZERO_PIXELS, ZERO_PIXELS),
     'border_top_style': 'none',
     'border_top_width': 3,  # computed value for 'medium'
+    'box_shadow': 'none',
     'border_image_source': ('none', None),
     'border_image_slice': (
         Dimension(100, '%'), Dimension(100, '%'),
@@ -94,6 +96,9 @@ INITIAL_VALUES = {
 
     # Color 3 (REC): https://www.w3.org/TR/css-color-3/
     'opacity': 1,
+
+    # Compositing and Blending (CR): https://www.w3.org/TR/compositing-1/
+    'mix_blend_mode': 'normal',
 
     # Multi-column Layout (WD): https://www.w3.org/TR/css-multicol-1/
     'column_width': 'auto',
@@ -170,6 +175,7 @@ INITIAL_VALUES = {
     'text_align_all': 'start',
     'text_align_last': 'auto',
     'text_indent': ZERO_PIXELS,
+    'text_shadow': 'none',
     'text_transform': 'none',
     'white_space': 'normal',
     'word_break': 'normal',
@@ -273,6 +279,8 @@ INITIAL_VALUES = {
     'continue': 'auto',
     'max_lines': 'none',
     'overflow': 'visible',
+    'overflow_x': 'visible',
+    'overflow_y': 'visible',
     'overflow_wrap': 'normal',
     'text_overflow': 'clip',
 
@@ -286,6 +294,7 @@ INITIAL_VALUES = {
     'list_style_image': ('none', None),
     'list_style_position': 'outside',
     'list_style_type': 'disc',
+    'marker_side': 'match-self',
 
     # Proprietary
     'anchor': None,  # computed value of 'none'
@@ -343,6 +352,7 @@ INHERITED = {
     'list_style_image',
     'list_style_position',
     'list_style_type',
+    'marker_side',
     'orphans',
     'overflow_wrap',
     'quotes',
@@ -350,6 +360,7 @@ INHERITED = {
     'text_align_all',
     'text_align_last',
     'text_indent',
+    'text_shadow',
     'text_transform',
     'text_underline_offset',
     'visibility',
@@ -397,6 +408,7 @@ TABLE_WRAPPER_BOX_PROPERTIES = {
 # computed.
 INITIAL_NOT_COMPUTED = {
     'display',
+    'overflow',
     'column_gap',
     'bleed_top',
     'bleed_left',

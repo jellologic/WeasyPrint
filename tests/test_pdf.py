@@ -29,6 +29,101 @@ def test_page_size_zoom(zoom):
 
 
 @assert_no_logs
+@pytest.mark.parametrize(('css_mode', 'pdf_mode'), [
+    ('multiply', 'Multiply'),
+    ('screen', 'Screen'),
+    ('color-dodge', 'ColorDodge'),
+    ('hard-light', 'HardLight'),
+    ('luminosity', 'Luminosity'),
+])
+def test_mix_blend_mode(css_mode, pdf_mode):
+    pdf = FakeHTML(string=(
+        f'<div style="mix-blend-mode: {css_mode}">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert f'/BM /{pdf_mode}'.encode() in pdf
+
+
+@assert_no_logs
+def test_mix_blend_mode_normal():
+    # The default value must not emit any blend mode ExtGState.
+    pdf = FakeHTML(string=(
+        '<div style="mix-blend-mode: normal">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /' not in pdf
+
+
+@assert_no_logs
+def test_box_shadow_sharp():
+    # A sharp (blur 0) red drop shadow offset by 3px must emit a red rectangle
+    # offset from the box (at margin 8px) behind it.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white; '
+        'box-shadow: 3px 3px 0 red"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' in pdf  # Red fill colour.
+    # The red shadow rectangle is offset by 3px from the box border box
+    # (which sits at the page origin with FakeHTML's zero margins).
+    assert b'3 3 50 50 re' in pdf
+
+
+@assert_no_logs
+def test_box_shadow_spread():
+    # A spread-only shadow grows the box by the spread radius on each side.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; '
+        'box-shadow: 0 0 0 5px lime"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Box border box at 0 0 50 50, grown by 5px each side -> -5 -5 60 60.
+    assert b'-5 -5 60 60 re' in pdf
+
+
+@assert_no_logs
+def test_box_shadow_inset():
+    # An inset shadow is clipped inside the padding box and filled with the
+    # even-odd rule.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white; '
+        'box-shadow: inset 4px 4px 0 black"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'0 0 0 rg' in pdf  # Black fill colour.
+    assert b'f*' in pdf  # Even-odd fill used for the inset ring.
+
+
+@assert_no_logs
+def test_box_shadow_none():
+    # The default value must not emit any extra fill operators.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Canvas + the div white background fill, but no shadow fills.
+    assert pdf.count(b' rg') == 2
+
+
+@assert_no_logs
+def test_text_shadow_sharp():
+    # A sharp (blur 0) red text shadow must draw the glyphs twice: once in the
+    # red shadow colour (behind) and once in the black text colour (on top),
+    # producing two text-showing blocks.
+    pdf = FakeHTML(string=(
+        '<p style="color: black; font-size: 20px; '
+        'text-shadow: 2px 2px 0 red">Hi</p>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' in pdf  # Red shadow fill colour.
+    assert b'0 0 0 rg' in pdf  # Black text fill colour.
+    assert pdf.count(b'BT') == 2  # Shadow text block + main text block.
+
+
+@assert_no_logs
+def test_text_shadow_none():
+    # The default value must not draw the text twice nor emit a red fill.
+    pdf = FakeHTML(string=(
+        '<p style="color: black; font-size: 20px">Hi</p>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' not in pdf
+    assert pdf.count(b'BT') == 1  # Only the main text block.
+
+
+@assert_no_logs
 def test_bookmarks_1():
     pdf = FakeHTML(string='''
       <h1>a</h1>  #
@@ -768,3 +863,71 @@ def test_pdf_ua_2_namespace_type():
     pdf = FakeHTML(string='<html lang="en"><body>abc').write_pdf(
         pdf_variant='pdf/ua-2', uncompressed_pdf=True)
     assert b'/Type /Namespace' in pdf
+
+
+@assert_no_logs
+def test_clip_path_inset():
+    # clip-path: inset(10px) clips the box to a rectangle inset by 10px on each
+    # side. FakeHTML has zero margins so the border box sits at the page origin.
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: inset(10px)"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Border box 0 0 100 100 inset by 10px -> 10 10 80 80, then clipped (W n).
+    assert b'10 10 80 80 re' in pdf
+    assert b'W\nn' in pdf
+
+
+@assert_no_logs
+def test_clip_path_inset_four_values():
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: inset(10px 20px 30px 40px)"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # top=10 right=20 bottom=30 left=40 -> x=40 y=10 w=40 h=60.
+    assert b'40 10 40 60 re' in pdf
+
+
+@assert_no_logs
+def test_clip_path_polygon():
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: polygon(0 0, 100px 0, 50px 100px)"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # A triangle path is emitted and used as a clip.
+    assert b'0 0 m' in pdf
+    assert b'100 0 l' in pdf
+    assert b'50 100 l' in pdf
+
+
+@assert_no_logs
+def test_clip_path_polygon_evenodd():
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: polygon(evenodd, 0 0, 100px 0, 50px 100px)"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # The even-odd clip operator must be used.
+    assert b'W*' in pdf
+
+
+@assert_no_logs
+def test_clip_path_circle():
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: circle(40px)"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # The ellipse path starts at the right-most point (cx + r, cy) = (90, 50)
+    # for a circle centred at the box centre (50, 50) with radius 40, and is
+    # built from Bézier curves.
+    assert b'90 50 m' in pdf
+    assert b' c\n' in pdf
+
+
+@assert_no_logs
+def test_clip_path_none():
+    # The default value must not emit any extra clipping path.
+    pdf = FakeHTML(string=(
+        '<div style="width: 100px; height: 100px; background: red; '
+        'clip-path: none"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'10 10 80 80 re' not in pdf

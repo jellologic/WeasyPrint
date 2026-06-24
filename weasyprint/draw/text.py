@@ -56,8 +56,29 @@ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
 
     # Draw text.
     x, y = textbox.position_x, textbox.position_y + textbox.baseline
-    stream.set_color(textbox.style['color'])
     textbox.pango_layout.reactivate(textbox.style)
+
+    # Draw text shadows behind the glyphs (the first shadow in the list is
+    # painted on top, so paint in reverse order).
+    shadows = textbox.style['text_shadow']
+    if shadows != 'none':
+        for color, offset_x, offset_y, blur in reversed(shadows):
+            if color is None or color == 'currentcolor':
+                color = textbox.style['color']
+            if color.alpha == 0:
+                continue
+            with stream.stacked():
+                stream.set_color(color)
+                if blur > 0:
+                    # Approximate the blur by lowering the opacity (sharp edge).
+                    stream.set_alpha(max(0.1, color.alpha / (1 + blur)))
+                stream.begin_text()
+                draw_first_line(
+                    stream, textbox, text_overflow, block_ellipsis,
+                    Matrix(d=-1, e=x + offset_x, f=y + offset_y))
+                stream.end_text()
+
+    stream.set_color(textbox.style['color'])
     stream.begin_text()
     emojis = draw_first_line(
         stream, textbox, text_overflow, block_ellipsis, Matrix(d=-1, e=x, f=y))

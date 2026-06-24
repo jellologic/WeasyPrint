@@ -363,6 +363,19 @@ def marker_to_box(element, state, parent_style, style_for, get_image_from_uri,
         # See https://drafts.csswg.org/css-pseudo-4/#marker-pseudo
         marker_box.style['position'] = 'absolute'
         marker_box.is_outside_marker = True
+        # ``marker-side`` decides which side the marker sits on. With the
+        # initial ``match-self`` value the side follows the list item's own
+        # direction; with ``match-parent`` it follows the parent's direction.
+        # See https://drafts.csswg.org/css-lists-3/#marker-side
+        if parent_style['marker_side'] == 'match-parent':
+            grand_parent_style = parent_style.parent_style
+            direction = (
+                grand_parent_style['direction']
+                if grand_parent_style is not None
+                else parent_style['direction'])
+        else:
+            direction = parent_style['direction']
+        marker_box.outside_marker_at_left = direction == 'ltr'
     else:
         marker_box = boxes.InlineBox.anonymous_from(box, children)
     yield marker_box

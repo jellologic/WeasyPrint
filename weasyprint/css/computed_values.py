@@ -395,6 +395,76 @@ def bleed(style, name, value):
     return length(style, name, value)
 
 
+@register_computer('box-shadow')
+def box_shadow(style, name, values):
+    """Compute the ``box-shadow`` property."""
+    if values == 'none' or values == ('none',):
+        return 'none'
+    computed = []
+    for inset, color, offset_x, offset_y, blur, spread in values:
+        computed.append((
+            inset,
+            parse_color(color, style['color_scheme']) if color else None,
+            length(style, name, offset_x, pixels_only=True),
+            length(style, name, offset_y, pixels_only=True),
+            length(style, name, blur, pixels_only=True),
+            length(style, name, spread, pixels_only=True),
+        ))
+    return tuple(computed)
+
+
+@register_computer('text-shadow')
+def text_shadow(style, name, values):
+    """Compute the ``text-shadow`` property."""
+    if values == 'none' or values == ('none',):
+        return 'none'
+    computed = []
+    for color, offset_x, offset_y, blur in values:
+        computed.append((
+            parse_color(color, style['color_scheme']) if color else None,
+            length(style, name, offset_x, pixels_only=True),
+            length(style, name, offset_y, pixels_only=True),
+            length(style, name, blur, pixels_only=True),
+        ))
+    return tuple(computed)
+
+
+@register_computer('clip-path')
+def clip_path(style, name, value):
+    """Compute the ``clip-path`` property.
+
+    Resolve length units to pixels while keeping percentages and shape-radius
+    keywords (``closest-side`` / ``farthest-side``), which are resolved against
+    the box geometry at draw time.
+
+    """
+    if value == 'none':
+        return value
+
+    def resolve(item):
+        if isinstance(item, str):  # shape-radius keyword
+            return item
+        return length(style, name, item)
+
+    shape = value[0]
+    if shape == 'inset':
+        _, edges = value
+        return (shape, tuple(resolve(edge) for edge in edges))
+    elif shape == 'circle':
+        _, radius, position = value
+        return (shape, resolve(radius), tuple(resolve(p) for p in position))
+    elif shape == 'ellipse':
+        _, radii, position = value
+        return (
+            shape, tuple(resolve(r) for r in radii),
+            tuple(resolve(p) for p in position))
+    else:  # polygon
+        _, fill_rule, points = value
+        return (
+            shape, fill_rule,
+            tuple((resolve(x), resolve(y)) for x, y in points))
+
+
 @register_computer('letter-spacing')
 def pixel_length(style, name, value):
     if value == 'normal':
@@ -829,3 +899,22 @@ def vertical_align(style, name, value):
 def word_spacing(style, name, value):
     """Compute the ``word-spacing`` property."""
     return 0 if value == 'normal' else length(style, name, value, pixels_only=True)
+
+
+@register_computer('overflow')
+def overflow(style, name, value):
+    """Compute the ``overflow`` property from ``overflow-x`` and ``overflow-y``.
+
+    WeasyPrint reads a single ``overflow`` value to decide whether a box
+    establishes a clipping context. When both axes agree, return that value
+    (keeping behavior identical to documents using only ``overflow``). When
+    they differ, return the non-visible axis so clipping still happens.
+
+    """
+    overflow_x = style['overflow_x']
+    overflow_y = style['overflow_y']
+    if overflow_x == overflow_y:
+        return overflow_x
+    if overflow_x == 'visible':
+        return overflow_y
+    return overflow_x
