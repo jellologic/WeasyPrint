@@ -49,3 +49,14 @@ def test_wrong_password_rejected():
     pdf = FakeHTML(string=HTML).write_pdf(pdf_user_password='right')
     with pytest.raises(pikepdf.PasswordError):
         pikepdf.open(io.BytesIO(pdf), password='wrong')
+
+
+@assert_no_logs
+def test_aes_encryption():
+    pdf = FakeHTML(string=HTML).write_pdf(
+        pdf_user_password='aes-pw', pdf_encryption_method='aes')
+    assert b'/AESV2' in pdf
+    with pytest.raises(pikepdf.PasswordError):
+        pikepdf.open(io.BytesIO(pdf))
+    document = pikepdf.open(io.BytesIO(pdf), password='aes-pw')
+    assert document.is_encrypted

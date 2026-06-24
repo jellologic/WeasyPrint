@@ -96,6 +96,7 @@ DEFAULT_OPTIONS = {
     'pdf_user_password': None,
     'pdf_owner_password': None,
     'pdf_permissions': None,
+    'pdf_encryption_method': 'rc4',
     'pdf_tags': False,
     'pdf_page_layout': None,
     'pdf_page_mode': None,
