@@ -206,6 +206,37 @@ def box_shadow(tokens):
     return (inset, color, offset_x, offset_y, blur, spread)
 
 
+@property()
+@comma_separated_list
+def text_shadow(tokens):
+    """``text-shadow`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+
+    color = None
+    lengths = []
+    for token in tokens:
+        length = get_length(token)
+        if length is not None:
+            if len(lengths) >= 3:
+                return  # Too many lengths
+            lengths.append(length)
+            continue
+        if color is None and parse_color(token):
+            color = token
+            continue
+        return  # Unexpected token
+
+    if not 2 <= len(lengths) <= 3:
+        return
+
+    offset_x, offset_y = lengths[0], lengths[1]
+    blur = lengths[2] if len(lengths) > 2 else Dimension(0, None)
+    if blur.value < 0:
+        return  # blur-radius must be non-negative
+    return (color, offset_x, offset_y, blur)
+
+
 @property('background-image', wants_base_url=True)
 @comma_separated_list
 @single_token

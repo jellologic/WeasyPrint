@@ -100,6 +100,30 @@ def test_box_shadow_none():
 
 
 @assert_no_logs
+def test_text_shadow_sharp():
+    # A sharp (blur 0) red text shadow must draw the glyphs twice: once in the
+    # red shadow colour (behind) and once in the black text colour (on top),
+    # producing two text-showing blocks.
+    pdf = FakeHTML(string=(
+        '<p style="color: black; font-size: 20px; '
+        'text-shadow: 2px 2px 0 red">Hi</p>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' in pdf  # Red shadow fill colour.
+    assert b'0 0 0 rg' in pdf  # Black text fill colour.
+    assert pdf.count(b'BT') == 2  # Shadow text block + main text block.
+
+
+@assert_no_logs
+def test_text_shadow_none():
+    # The default value must not draw the text twice nor emit a red fill.
+    pdf = FakeHTML(string=(
+        '<p style="color: black; font-size: 20px">Hi</p>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' not in pdf
+    assert pdf.count(b'BT') == 1  # Only the main text block.
+
+
+@assert_no_logs
 def test_bookmarks_1():
     pdf = FakeHTML(string='''
       <h1>a</h1>  #

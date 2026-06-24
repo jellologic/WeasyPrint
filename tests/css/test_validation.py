@@ -1366,3 +1366,46 @@ def test_box_shadow_list():
 ])
 def test_box_shadow_invalid(rule):
     assert_invalid(rule)
+
+
+@assert_no_logs
+def test_text_shadow_none():
+    assert get_value('text-shadow: none') == ('none',)
+
+
+@assert_no_logs
+def test_text_shadow_offsets():
+    value = get_value('text-shadow: 3px 4px red')
+    assert len(value) == 1
+    color, ox, oy, blur = value[0]
+    assert color is not None
+    assert (ox, oy) == ((3, 'px'), (4, 'px'))
+    assert blur == (0, None)
+
+
+@assert_no_logs
+def test_text_shadow_blur_no_color():
+    value = get_value('text-shadow: 1px 2px 3px')
+    color, ox, oy, blur = value[0]
+    assert color is None
+    assert (ox, oy, blur) == ((1, 'px'), (2, 'px'), (3, 'px'))
+
+
+@assert_no_logs
+def test_text_shadow_list():
+    value = get_value('text-shadow: 1px 1px red, 2px 2px 3px blue')
+    assert len(value) == 2
+
+
+@assert_no_logs
+@pytest.mark.parametrize('rule', [
+    'text-shadow: 3px',
+    'text-shadow: red',
+    'text-shadow: 1px 1px -3px red',
+    'text-shadow: inset 1px 1px red',
+    'text-shadow: 1px 2px 3px 4px red',
+    'text-shadow: 1px 1px red blue',
+    'text-shadow: 1px 1px 50%',
+])
+def test_text_shadow_invalid(rule):
+    assert_invalid(rule)

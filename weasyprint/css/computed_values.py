@@ -413,6 +413,22 @@ def box_shadow(style, name, values):
     return tuple(computed)
 
 
+@register_computer('text-shadow')
+def text_shadow(style, name, values):
+    """Compute the ``text-shadow`` property."""
+    if values == 'none' or values == ('none',):
+        return 'none'
+    computed = []
+    for color, offset_x, offset_y, blur in values:
+        computed.append((
+            parse_color(color, style['color_scheme']) if color else None,
+            length(style, name, offset_x, pixels_only=True),
+            length(style, name, offset_y, pixels_only=True),
+            length(style, name, blur, pixels_only=True),
+        ))
+    return tuple(computed)
+
+
 @register_computer('letter-spacing')
 def pixel_length(style, name, value):
     if value == 'normal':
