@@ -118,6 +118,11 @@ group.add_argument(
         'attachments'),
     help='how the document is displayed when opened in a viewer')
 group.add_argument(
+    '--pdf-open-action', dest='pdf_open_action',
+    help=(
+        'initial view destination when the PDF is opened: an anchor name or a '
+        '1-based page number'))
+group.add_argument(
     '--uncompressed-pdf', action='store_true',
     help='do not compress PDF content, mainly for debugging purpose')
 group.add_argument(

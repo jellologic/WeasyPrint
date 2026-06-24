@@ -50,6 +50,13 @@ VERSION = __version__ = '69.0'
 #:     ``none``, ``outlines`` (show bookmarks), ``thumbnails``,
 #:     ``full-screen``, ``optional-content`` or ``attachments`` (mapped to the
 #:     corresponding PDF ``/PageMode`` value), or a raw PDF name.
+#: :param pdf_open_action:
+#:     Initial view destination when the PDF is opened in a viewer. Either the
+#:     name of an anchor (matching an internal link target / named destination)
+#:     or a 1-based page number. Sets the PDF ``/OpenAction`` to a ``GoTo``
+#:     destination. If the anchor does not exist, a warning is logged and the
+#:     option is ignored.
+#: :type pdf_open_action: :obj:`str` or :obj:`int`
 #: :param dict pdf_viewer_preferences:
 #:     A dictionary of PDF ``/ViewerPreferences`` entries. Keys are PDF names
 #:     without the leading slash (e.g. ``HideToolbar``, ``HideMenubar``,
@@ -90,6 +97,7 @@ DEFAULT_OPTIONS = {
     'pdf_page_layout': None,
     'pdf_page_mode': None,
     'pdf_viewer_preferences': None,
+    'pdf_open_action': None,
     'uncompressed_pdf': False,
     'xmp_metadata': None,
     'custom_metadata': False,

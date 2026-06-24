@@ -440,6 +440,60 @@ def test_viewer_preferences_unchanged():
 
 
 @assert_no_logs
+def test_pdf_open_action_none():
+    # Documents not using the feature must not gain an /OpenAction.
+    pdf = FakeHTML(string='<body>').write_pdf()
+    assert b'/OpenAction' not in pdf
+
+
+@assert_no_logs
+def test_pdf_open_action_unchanged():
+    # Byte-identical output when the feature is not used.
+    html = '<h1 id=top>Hello</h1><p>World</p>'
+    default = FakeHTML(string=html).write_pdf()
+    explicit_none = FakeHTML(string=html).write_pdf(pdf_open_action=None)
+    assert default == explicit_none
+
+
+@assert_no_logs
+def test_pdf_open_action_anchor():
+    pdf = FakeHTML(string='''
+      <h1 id=top>Top</h1>
+      <p style="page-break-before: always" id=target>Target</p>
+    ''').write_pdf(pdf_open_action='target')
+    assert b'/OpenAction' in pdf
+    assert b'/S /GoTo' in pdf
+    assert b'/XYZ' in pdf
+
+
+@assert_no_logs
+def test_pdf_open_action_page_number():
+    pdf = FakeHTML(string='''
+      <p>One</p>
+      <p style="page-break-before: always">Two</p>
+    ''').write_pdf(pdf_open_action=2)
+    assert b'/OpenAction' in pdf
+    assert b'/S /GoTo' in pdf
+
+
+def test_pdf_open_action_missing_anchor():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='<body>Hello').write_pdf(
+            pdf_open_action='nope')
+    assert b'/OpenAction' not in pdf
+    assert len(logs) == 1
+    assert 'pdf_open_action' in logs[0]
+
+
+def test_pdf_open_action_page_out_of_range():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='<body>Hello').write_pdf(pdf_open_action=5)
+    assert b'/OpenAction' not in pdf
+    assert len(logs) == 1
+    assert 'out of range' in logs[0]
+
+
+@assert_no_logs
 def test_pdf_page_layout():
     pdf = FakeHTML(string='<body>').write_pdf(pdf_page_layout='two-column-left')
     assert b'/PageLayout /TwoColumnLeft' in pdf

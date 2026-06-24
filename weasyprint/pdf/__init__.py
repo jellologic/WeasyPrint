@@ -177,6 +177,54 @@ def add_viewer_preferences(pdf, options):
             viewer_preferences[key] = _viewer_preference_value(value)
 
 
+def add_open_action(pdf, options, pdf_names):
+    """Add an /OpenAction GoTo destination to the catalog.
+
+    The ``pdf_open_action`` option names an anchor (matching an internal link
+    target / named destination) or a 1-based page number. If it cannot be
+    resolved, log a warning and skip.
+
+    """
+    target = options.get('pdf_open_action')
+    if target is None:
+        return
+
+    destination = None
+
+    # Page number: 1-based index into the document pages.
+    page_number = None
+    if isinstance(target, int):
+        page_number = target
+    elif isinstance(target, str) and target.isdigit():
+        page_number = int(target)
+    if page_number is not None:
+        if 1 <= page_number <= len(pdf.page_references):
+            page_reference = pdf.page_references[page_number - 1]
+            destination = pydyf.Array(
+                [page_reference, '/XYZ', 'null', 'null', 0])
+        else:
+            LOGGER.warning(
+                'pdf_open_action page number out of range: %r', target)
+            return
+
+    # Named anchor: match against the resolved named destinations.
+    if destination is None:
+        for anchor_name, anchor_destination in pdf_names:
+            if anchor_name == target:
+                destination = anchor_destination
+                break
+        else:
+            LOGGER.warning(
+                'pdf_open_action anchor not found: %r', target)
+            return
+
+    pdf.catalog['OpenAction'] = pydyf.Dictionary({
+        'Type': '/Action',
+        'S': '/GoTo',
+        'D': destination,
+    })
+
+
 def _reference_resources(pdf, resources, images, fonts, color_profiles):
     if 'Font' in resources:
         assert resources['Font'] is None
@@ -485,6 +533,9 @@ def generate_pdf(document, target, zoom, **options):
     # Viewer preferences, page layout and page mode (run after add_tags so
     # user-provided ViewerPreferences entries merge with the tagging defaults)
     add_viewer_preferences(pdf, options)
+
+    # Initial view destination
+    add_open_action(pdf, options, pdf_names)
 
     # Apply PDF variants functions
     if variant:
