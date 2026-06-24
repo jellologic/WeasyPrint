@@ -1,6 +1,8 @@
 """Take an "after layout" box tree and draw it onto a pydyf stream."""
 
 import operator
+from contextlib import nullcontext
+from itertools import cycle, islice
 from math import floor
 from xml.etree import ElementTree
 
@@ -494,12 +496,19 @@ def draw_background(stream, bg, clip_box=True, bleed=None, marks=()):
                 image, size, position, repeat, unbounded, painting_area,
                 positioning_area, clipped_boxes)
             bg.layers.insert(0, layer)
+        # Blend mode for each background layer (cycles per spec). The crop-mark
+        # layer (if any was inserted at index 0) is not a real background layer
+        # and always uses the default 'normal' blend mode.
+        blend_modes = list(islice(
+            cycle(bg.style['background_blend_mode']), len(bg.layers)))
+        if bleed and marks:
+            blend_modes = ['normal', *blend_modes[:len(bg.layers) - 1]]
         # Paint in reversed order: first layer is "closest" to the viewer.
-        for layer in reversed(bg.layers):
-            draw_background_image(stream, layer, bg.style)
+        for layer, blend_mode in reversed(list(zip(bg.layers, blend_modes))):
+            draw_background_image(stream, layer, bg.style, blend_mode)
 
 
-def draw_background_image(stream, layer, style):
+def draw_background_image(stream, layer, style, blend_mode='normal'):
     if layer.image is None or 0 in layer.size:
         return
 
@@ -510,8 +519,17 @@ def draw_background_image(stream, layer, style):
     repeat_x, repeat_y = layer.repeat
     image_width, image_height = layer.size
 
+    # Only set up a saved graphics state (q/Q) when a non-default blend mode
+    # must be applied, so that output stays byte-identical when unused.
+    blend = stream.stacked() if blend_mode != 'normal' else nullcontext()
+
     if repeat_x == 'no-repeat' and repeat_y == 'no-repeat':
-        with stream.artifact():
+        with stream.artifact(), blend:
+            # Apply the blend mode for this background layer, see
+            # https://www.w3.org/TR/compositing-1/#background-blend-mode.
+            if blend_mode != 'normal':
+                stream.set_blend_mode(
+                    blend_mode.replace('-', ' ').title().replace(' ', ''))
             # We don't use a pattern when we don't need to because some viewers
             # (e.g., Preview on Mac) introduce unnecessary pixelation when vector
             # images are used in patterns.
@@ -572,6 +590,11 @@ def draw_background_image(stream, layer, style):
     group = pattern.add_group(0, 0, repeat_width, repeat_height)
 
     with stream.artifact(), stream.stacked():
+        # Apply the blend mode for this background layer, see
+        # https://www.w3.org/TR/compositing-1/#background-blend-mode.
+        if blend_mode != 'normal':
+            stream.set_blend_mode(
+                blend_mode.replace('-', ' ').title().replace(' ', ''))
         layer.image.draw(group, image_width, image_height, style)
         with pattern.artifact():
             pattern.draw_x_object(group.id)

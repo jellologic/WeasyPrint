@@ -118,6 +118,17 @@ def background_attachment(keyword):
     return keyword in ('scroll', 'fixed', 'local')
 
 
+@property()
+@comma_separated_list
+@single_keyword
+def background_blend_mode(keyword):
+    """``background-blend-mode`` property validation."""
+    return keyword in (
+        'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+        'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference',
+        'exclusion', 'hue', 'saturation', 'color', 'luminosity')
+
+
 @property('background-color')
 @property('border-top-color')
 @property('border-right-color')

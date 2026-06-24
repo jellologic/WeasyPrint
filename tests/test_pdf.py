@@ -53,6 +53,31 @@ def test_mix_blend_mode_normal():
 
 
 @assert_no_logs
+def test_background_blend_mode():
+    # Two background layers with a blend mode each: the first (topmost) layer
+    # uses multiply, the second uses screen. Both /BM operators must be emitted.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: linear-gradient(red, blue),'
+        ' linear-gradient(green, yellow);'
+        ' background-blend-mode: multiply, screen">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /Multiply' in pdf
+    assert b'/BM /Screen' in pdf
+
+
+@assert_no_logs
+def test_background_blend_mode_normal():
+    # The default value must not emit any blend mode ExtGState.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: linear-gradient(red, blue);'
+        ' background-blend-mode: normal">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /' not in pdf
+
+
+@assert_no_logs
 def test_box_shadow_sharp():
     # A sharp (blur 0) red drop shadow offset by 3px must emit a red rectangle
     # offset from the box (at margin 8px) behind it.
