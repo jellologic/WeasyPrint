@@ -606,8 +606,10 @@ elements".
 The `Image Values and Replaced Content Module Level 4`_ is a working draft on
 the same subject.
 
-The ``linear-gradient()``, ``radial-gradient()`` and
-``repeating-radial-gradient()`` properties are supported as background images.
+The ``linear-gradient()``, ``radial-gradient()``, ``conic-gradient()`` and
+their ``repeating-`` variants are supported as background images. As PDF has no
+native conic shading, ``conic-gradient()`` is rasterized to an image at the box
+size.
 
 The the ``url()`` notation is supported, but the ``image()`` notation is
 **not** supported for background images.

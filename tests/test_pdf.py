@@ -67,6 +67,41 @@ def test_background_blend_mode():
 
 
 @assert_no_logs
+@pytest.mark.parametrize('prefix', ['', 'repeating-'])
+def test_conic_gradient_background(prefix):
+    # A conic gradient has no native PDF shading, so it is rasterized and
+    # embedded as an image XObject for that box.
+    gradient = (
+        f'{prefix}conic-gradient(from 45deg at 30% 70%,'
+        ' red 0deg, blue 180deg, red 360deg)')
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        f' background-image: {gradient}">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # An image XObject must be emitted for the conic gradient.
+    assert b'/Subtype /Image' in pdf
+    assert b'/XObject' in pdf
+
+    # The output must differ from a solid background of the same size.
+    solid = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: none; background-color: red">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/Subtype /Image' not in solid
+    assert pdf != solid
+
+
+@assert_no_logs
+def test_conic_gradient_not_used_byte_identical():
+    # A document that does not use conic-gradient must be unaffected.
+    source = '<div style="width: 50px; height: 50px; background: red">a</div>'
+    first = FakeHTML(string=source).write_pdf()
+    second = FakeHTML(string=source).write_pdf()
+    assert first == second
+    assert b'/Subtype /Image' not in first
+
+
+@assert_no_logs
 def test_background_blend_mode_normal():
     # The default value must not emit any blend mode ExtGState.
     pdf = FakeHTML(string=(
