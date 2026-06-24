@@ -369,6 +369,7 @@ class Document:
                 kwargs['owner_password'] = owner_password
             if permissions is not None:
                 kwargs['permissions'] = permissions
+            kwargs['method'] = options['pdf_encryption_method']
             encryption = pydyf.Encryption(**kwargs)
 
         if target is None:
