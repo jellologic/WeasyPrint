@@ -40,6 +40,21 @@ VERSION = __version__ = '69.0'
 #:     Whether PDF forms have to be included.
 #: :param bool pdf_tags:
 #:     Whether PDF should be tagged for accessibility.
+#: :param str pdf_page_layout:
+#:     Initial page layout when the PDF is opened in a viewer. One of
+#:     ``single-page``, ``one-column``, ``two-column-left``,
+#:     ``two-column-right``, ``two-page-left`` or ``two-page-right`` (mapped to
+#:     the corresponding PDF ``/PageLayout`` value), or a raw PDF name.
+#: :param str pdf_page_mode:
+#:     How the document is displayed when opened in a viewer. One of
+#:     ``none``, ``outlines`` (show bookmarks), ``thumbnails``,
+#:     ``full-screen``, ``optional-content`` or ``attachments`` (mapped to the
+#:     corresponding PDF ``/PageMode`` value), or a raw PDF name.
+#: :param dict pdf_viewer_preferences:
+#:     A dictionary of PDF ``/ViewerPreferences`` entries. Keys are PDF names
+#:     without the leading slash (e.g. ``HideToolbar``, ``HideMenubar``,
+#:     ``FitWindow``, ``CenterWindow``, ``DisplayDocTitle``) and values are
+#:     booleans, integers or strings written as the matching PDF object.
 #: :param bool uncompressed_pdf:
 #:     Whether PDF content should be compressed.
 #: :param bool custom_metadata:
@@ -72,6 +87,9 @@ DEFAULT_OPTIONS = {
     'pdf_version': None,
     'pdf_forms': None,
     'pdf_tags': False,
+    'pdf_page_layout': None,
+    'pdf_page_mode': None,
+    'pdf_viewer_preferences': None,
     'uncompressed_pdf': False,
     'xmp_metadata': None,
     'custom_metadata': False,

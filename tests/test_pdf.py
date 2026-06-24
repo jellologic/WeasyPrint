@@ -396,6 +396,77 @@ def test_bookmarks_15():
 
 
 @assert_no_logs
+def test_viewer_preferences_none():
+    # Documents not using the feature must not gain these keys.
+    pdf = FakeHTML(string='<body>').write_pdf()
+    assert b'/PageLayout' not in pdf
+    assert b'/PageMode' not in pdf
+    assert b'/ViewerPreferences' not in pdf
+
+
+@assert_no_logs
+def test_viewer_preferences_unchanged():
+    # Byte-identical output when the feature is not used.
+    html = '<h1>Hello</h1><p>World</p>'
+    default = FakeHTML(string=html).write_pdf()
+    explicit_none = FakeHTML(string=html).write_pdf(
+        pdf_page_layout=None, pdf_page_mode=None, pdf_viewer_preferences=None)
+    assert default == explicit_none
+
+
+@assert_no_logs
+def test_pdf_page_layout():
+    pdf = FakeHTML(string='<body>').write_pdf(pdf_page_layout='two-column-left')
+    assert b'/PageLayout /TwoColumnLeft' in pdf
+
+
+@assert_no_logs
+def test_pdf_page_mode():
+    pdf = FakeHTML(string='<body>').write_pdf(pdf_page_mode='full-screen')
+    assert b'/PageMode /FullScreen' in pdf
+
+
+@assert_no_logs
+def test_pdf_viewer_preferences():
+    pdf = FakeHTML(string='<body>').write_pdf(pdf_viewer_preferences={
+        'HideToolbar': True,
+        'HideMenubar': False,
+        'FitWindow': True,
+        'NumCopies': 2,
+        'Direction': '/R2L',
+    })
+    assert b'/ViewerPreferences' in pdf
+    assert b'/HideToolbar true' in pdf
+    assert b'/HideMenubar false' in pdf
+    assert b'/FitWindow true' in pdf
+    assert b'/NumCopies 2' in pdf
+    assert b'/Direction /R2L' in pdf
+
+
+@assert_no_logs
+def test_pdf_viewer_preferences_merge_with_tags():
+    # When tagging is enabled, DisplayDocTitle is set; user prefs must merge.
+    pdf = FakeHTML(string='<html lang=en><body>Hi').write_pdf(
+        pdf_tags=True, pdf_viewer_preferences={'HideToolbar': True})
+    assert b'/DisplayDocTitle true' in pdf
+    assert b'/HideToolbar true' in pdf
+
+
+@assert_no_logs
+def test_pdf_page_layout_raw_name():
+    pdf = FakeHTML(string='<body>').write_pdf(pdf_page_layout='/OneColumn')
+    assert b'/PageLayout /OneColumn' in pdf
+
+
+def test_pdf_page_layout_unknown():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='<body>').write_pdf(pdf_page_layout='bogus')
+    assert b'/PageLayout' not in pdf
+    assert len(logs) == 1
+    assert 'pdf_page_layout' in logs[0]
+
+
+@assert_no_logs
 def test_links_none():
     pdf = FakeHTML(string='<body>').write_pdf()
     assert b'Annots' not in pdf
