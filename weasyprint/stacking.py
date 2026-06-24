@@ -78,6 +78,7 @@ def _dispatch(box, page, child_contexts, blocks, floats, blocks_and_cells):
         style['opacity'] < 1 or
         style['mix_blend_mode'] != 'normal' or
         style['transform'] or  # 'transform: none' gives a "falsy" empty list
+        style['clip_path'] != 'none' or
         style['overflow'] != 'visible')
     if defines_stacking_context:
         child_contexts.append(StackingContext.from_box(box, page))

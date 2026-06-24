@@ -15,6 +15,7 @@ INITIAL_VALUES = {
     'caption_side': 'top',
     'clear': 'none',
     'clip': (),  # computed value for 'auto'
+    'clip_path': 'none',
     'color': parse_color('black'),  # chosen by the user agent
     'direction': 'ltr',
     'display': ('inline', 'flow'),

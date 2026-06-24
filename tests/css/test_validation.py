@@ -1409,3 +1409,68 @@ def test_text_shadow_list():
 ])
 def test_text_shadow_invalid(rule):
     assert_invalid(rule)
+
+
+@assert_no_logs
+def test_clip_path_none():
+    assert get_value('clip-path: none') == 'none'
+
+
+@assert_no_logs
+def test_clip_path_inset():
+    value = get_value('clip-path: inset(10px)')
+    assert value[0] == 'inset'
+    assert len(value[1]) == 4
+    assert all(edge.value == 10 for edge in value[1])
+
+
+@assert_no_logs
+def test_clip_path_inset_four():
+    value = get_value('clip-path: inset(1px 2px 3px 4px)')
+    top, right, bottom, left = value[1]
+    assert (top.value, right.value, bottom.value, left.value) == (1, 2, 3, 4)
+
+
+@assert_no_logs
+def test_clip_path_circle():
+    value = get_value('clip-path: circle(40px at center)')
+    assert value[0] == 'circle'
+    assert value[1].value == 40
+
+
+@assert_no_logs
+def test_clip_path_ellipse():
+    value = get_value('clip-path: ellipse(30px 20px)')
+    assert value[0] == 'ellipse'
+    assert len(value[1]) == 2
+
+
+@assert_no_logs
+def test_clip_path_polygon():
+    value = get_value('clip-path: polygon(0 0, 100px 0, 50px 100px)')
+    assert value[0] == 'polygon'
+    assert value[1] == 'nonzero'
+    assert len(value[2]) == 3
+
+
+@assert_no_logs
+def test_clip_path_polygon_evenodd():
+    value = get_value('clip-path: polygon(evenodd, 0 0, 100px 0, 50px 100px)')
+    assert value[0] == 'polygon'
+    assert value[1] == 'evenodd'
+    assert len(value[2]) == 3
+
+
+@assert_no_logs
+@pytest.mark.parametrize('rule', [
+    'clip-path: inset()',
+    'clip-path: inset(1px 2px 3px 4px 5px)',
+    'clip-path: inset(10px round 5px)',
+    'clip-path: circle(10px 20px)',
+    'clip-path: ellipse(10px)',
+    'clip-path: polygon(0 0)',
+    'clip-path: polygon(0 0, 100px)',
+    'clip-path: rect(1px)',
+])
+def test_clip_path_invalid(rule):
+    assert_invalid(rule)

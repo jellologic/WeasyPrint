@@ -429,6 +429,42 @@ def text_shadow(style, name, values):
     return tuple(computed)
 
 
+@register_computer('clip-path')
+def clip_path(style, name, value):
+    """Compute the ``clip-path`` property.
+
+    Resolve length units to pixels while keeping percentages and shape-radius
+    keywords (``closest-side`` / ``farthest-side``), which are resolved against
+    the box geometry at draw time.
+
+    """
+    if value == 'none':
+        return value
+
+    def resolve(item):
+        if isinstance(item, str):  # shape-radius keyword
+            return item
+        return length(style, name, item)
+
+    shape = value[0]
+    if shape == 'inset':
+        _, edges = value
+        return (shape, tuple(resolve(edge) for edge in edges))
+    elif shape == 'circle':
+        _, radius, position = value
+        return (shape, resolve(radius), tuple(resolve(p) for p in position))
+    elif shape == 'ellipse':
+        _, radii, position = value
+        return (
+            shape, tuple(resolve(r) for r in radii),
+            tuple(resolve(p) for p in position))
+    else:  # polygon
+        _, fill_rule, points = value
+        return (
+            shape, fill_rule,
+            tuple((resolve(x), resolve(y)) for x, y in points))
+
+
 @register_computer('letter-spacing')
 def pixel_length(style, name, value):
     if value == 'normal':
