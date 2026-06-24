@@ -829,3 +829,22 @@ def vertical_align(style, name, value):
 def word_spacing(style, name, value):
     """Compute the ``word-spacing`` property."""
     return 0 if value == 'normal' else length(style, name, value, pixels_only=True)
+
+
+@register_computer('overflow')
+def overflow(style, name, value):
+    """Compute the ``overflow`` property from ``overflow-x`` and ``overflow-y``.
+
+    WeasyPrint reads a single ``overflow`` value to decide whether a box
+    establishes a clipping context. When both axes agree, return that value
+    (keeping behavior identical to documents using only ``overflow``). When
+    they differ, return the non-visible axis so clipping still happens.
+
+    """
+    overflow_x = style['overflow_x']
+    overflow_y = style['overflow_y']
+    if overflow_x == overflow_y:
+        return overflow_x
+    if overflow_x == 'visible':
+        return overflow_y
+    return overflow_x

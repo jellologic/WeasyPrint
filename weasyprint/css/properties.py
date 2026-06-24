@@ -276,6 +276,8 @@ INITIAL_VALUES = {
     'continue': 'auto',
     'max_lines': 'none',
     'overflow': 'visible',
+    'overflow_x': 'visible',
+    'overflow_y': 'visible',
     'overflow_wrap': 'normal',
     'text_overflow': 'clip',
 
@@ -400,6 +402,7 @@ TABLE_WRAPPER_BOX_PROPERTIES = {
 # computed.
 INITIAL_NOT_COMPUTED = {
     'display',
+    'overflow',
     'column_gap',
     'bleed_top',
     'bleed_left',

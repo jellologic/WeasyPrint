@@ -1120,3 +1120,19 @@ def test_min_max_rtl():
     assert div2.position_y == 4
     assert div2.height == 4
     assert div2.width == 3
+
+
+@assert_no_logs
+def test_overflow_x_y():
+    # overflow-x/overflow-y longhands are applied and combined into overflow.
+    page, = render_pages('''
+      <body>
+        <div style="overflow-x: hidden; overflow-y: visible"></div>
+    ''')
+    html, = page.children
+    body, = html.children
+    div, = body.children
+    assert div.style['overflow_x'] == 'hidden'
+    assert div.style['overflow_y'] == 'visible'
+    # A non-visible axis makes the combined overflow non-visible (clipping).
+    assert div.style['overflow'] == 'hidden'

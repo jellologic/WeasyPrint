@@ -1169,10 +1169,11 @@ def column_count(token):
         return 'auto'
 
 
-@property()
+@property('overflow-x')
+@property('overflow-y')
 @single_keyword
 def overflow(keyword):
-    """Validation for the ``overflow`` property."""
+    """Validation for the ``overflow-x`` and ``overflow-y`` properties."""
     return keyword in ('auto', 'visible', 'hidden', 'scroll')
 
 

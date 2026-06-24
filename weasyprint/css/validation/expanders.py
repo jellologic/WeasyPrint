@@ -19,7 +19,8 @@ from .properties import (  # isort:skip
     flex_grow_shrink, flex_wrap, font_family, font_size, font_stretch, font_style,
     font_variant_caps, font_weight, gap, grid_line, grid_template, line_height,
     list_style_image, list_style_position, list_style_type, mask_border_mode,
-    other_colors, overflow_wrap, text_decoration_thickness, validate_non_shorthand)
+    other_colors, overflow, overflow_wrap, text_decoration_thickness,
+    validate_non_shorthand)
 
 EXPANDERS = {}
 
@@ -759,6 +760,27 @@ def expand_font(tokens, name):
     if font_family(tokens) is None:
         raise InvalidValues
     yield '-family', tokens
+
+
+@expander('overflow')
+@generic_expander('-x', '-y')
+def expand_overflow(tokens, name):
+    """Expand the ``overflow`` shorthand property.
+
+    One value sets both axes; two values set ``overflow-x`` then
+    ``overflow-y``. See https://www.w3.org/TR/css-overflow-3/#overflow-control
+
+    """
+    if len(tokens) == 1:
+        tokens_x = tokens_y = tokens
+    elif len(tokens) == 2:
+        tokens_x, tokens_y = ([token] for token in tokens)
+    else:
+        raise InvalidValues
+    if overflow(tokens_x) is None or overflow(tokens_y) is None:
+        raise InvalidValues
+    yield '-x', tokens_x
+    yield '-y', tokens_y
 
 
 @expander('word-wrap')
