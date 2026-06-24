@@ -295,6 +295,10 @@ def image(style, name, image):
         value.center, = compute_position(style, name, (value.center,))
         if value.size_type == 'explicit':
             value.size = length_or_percentage_tuple(style, name, value.size)
+    if type_ == 'conic-gradient':
+        # Stop positions and hints are angles or percentages, no length to
+        # resolve, but the gradient center is a position.
+        value.center, = compute_position(style, name, (value.center,))
     return image
 
 

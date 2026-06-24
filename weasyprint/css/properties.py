@@ -172,6 +172,11 @@ INITIAL_VALUES = {
     # 'none', prefix is a string (possibly empty) and start is an int or None.
     'pdf_page_label': 'auto',
 
+    # Proprietary: PDF optional content group (layer) assignment.
+    # Value is either 'none' or a layer name string. Elements sharing a name
+    # are grouped into one toggleable PDF layer (/OCProperties in the catalog).
+    'layer': 'none',
+
     # Text 3/4 (WD/WD): https://www.w3.org/TR/css-text-4/
     'hyphenate_character': '‐',  # computed value chosen by the user agent
     'hyphenate_limit_chars': (5, 2, 2),

@@ -824,6 +824,55 @@ def test_radial_gradient_invalid(rule):
 
 
 @assert_no_logs
+@pytest.mark.parametrize(('rule', 'from_angle', 'center', 'colors', 'positions'), [
+    ('blue, red', 0, ('left', (50, '%'), 'top', (50, '%')),
+     ((0, 0, 1, 1), (1, 0, 0, 1)), (None, None)),
+    ('from 90deg, blue, red', pi / 2, ('left', (50, '%'), 'top', (50, '%')),
+     ((0, 0, 1, 1), (1, 0, 0, 1)), (None, None)),
+    ('at 25% 75%, blue, red', 0, ('left', (25, '%'), 'top', (75, '%')),
+     ((0, 0, 1, 1), (1, 0, 0, 1)), (None, None)),
+    ('from 0.5turn at 10px 20px, blue, red', pi,
+     ('left', (10, 'px'), 'top', (20, 'px')),
+     ((0, 0, 1, 1), (1, 0, 0, 1)), (None, None)),
+    ('blue 25%, lime 50%, red 75%', 0, ('left', (50, '%'), 'top', (50, '%')),
+     ((0, 0, 1, 1), (0, 1, 0, 1), (1, 0, 0, 1)),
+     ((25, '%'), (50, '%'), (75, '%'))),
+])
+def test_conic_gradient(rule, from_angle, center, colors, positions):
+    from weasyprint.images import ConicGradient
+    for repeating, prefix in ((False, ''), (True, 'repeating-')):
+        (type_, image), = get_value(
+            f'background-image: {prefix}conic-gradient({rule})')
+        assert type_ == 'conic-gradient'
+        assert isinstance(image, ConicGradient)
+        assert image.repeating == repeating
+        assert image.from_angle == pytest.approx(from_angle)
+        assert image.center == center
+        assert image.colors == tuple(colors)
+        for got, expected in zip(image.stop_positions, positions):
+            if expected is None:
+                assert got is None
+            else:
+                value, unit = expected
+                assert got.unit == unit
+                assert got.value == pytest.approx(value)
+
+
+@assert_no_logs
+@pytest.mark.parametrize('rule', [
+    ' ',
+    'from blue',
+    'from 90, blue',
+    'at, blue',
+    'at nowhere, blue',
+    'blue 10px',
+])
+def test_conic_gradient_invalid(rule):
+    assert_invalid(f'background-image: conic-gradient({rule})')
+    assert_invalid(f'background-image: repeating-conic-gradient({rule})')
+
+
+@assert_no_logs
 @pytest.mark.parametrize(('rule', 'value'), [
     ('40px', ((40, 'px'),)),
     ('2fr', ((2, 'fr'),)),

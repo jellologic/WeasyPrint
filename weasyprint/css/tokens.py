@@ -117,6 +117,74 @@ def parse_color_stop(tokens):
     raise InvalidValues
 
 
+def parse_angular_color_hint(tokens):
+    if len(tokens) == 1:
+        token = tokens[0]
+        percentage = get_percentage(token)
+        if percentage is not None:
+            return percentage
+        angle = get_angle(token)
+        if angle is not None:
+            return Dimension(angle, 'rad')
+
+
+def parse_angular_color_stop(tokens):
+    """Parse one angular color stop of a conic gradient.
+
+    Positions are ``<angle>`` (stored as a ``rad`` Dimension) or
+    ``<percentage>``. A stop may carry two positions
+    (``<color> <angle-percentage> <angle-percentage>``), expanding to two
+    stops. Returns a list of ``(color, position)`` tuples. See
+    https://drafts.csswg.org/css-images-4/#typedef-angular-color-stop.
+
+    """
+    if len(tokens) == 1:
+        color = parse_color(tokens[0])
+        if color == 'currentcolor':
+            # TODO: return the current color instead
+            return [(parse_color('black'), None)]
+        if color is not None:
+            return [(color, None)]
+    elif len(tokens) == 2:
+        color = parse_color(tokens[0])
+        position = parse_angular_color_hint([tokens[1]])
+        if color is not None and position is not None:
+            return [(color, position)]
+    elif len(tokens) == 3:
+        color = parse_color(tokens[0])
+        position_1 = parse_angular_color_hint([tokens[1]])
+        position_2 = parse_angular_color_hint([tokens[2]])
+        if color is not None and None not in (position_1, position_2):
+            return [(color, position_1), (color, position_2)]
+    raise InvalidValues
+
+
+def parse_angular_color_stops_and_hints(color_stops_hints):
+    if not color_stops_hints:
+        raise InvalidValues
+
+    color_stops = list(parse_angular_color_stop(color_stops_hints[0]))
+    color_hints = [FIFTY_PERCENT] * (len(color_stops) - 1)
+    previous_was_color_stop = True
+
+    for tokens in color_stops_hints[1:]:
+        if (hint := parse_angular_color_hint(tokens)) is not None:
+            color_hints.append(hint)
+            previous_was_color_stop = False
+        else:
+            stops = parse_angular_color_stop(tokens)
+            if previous_was_color_stop:
+                color_hints.append(FIFTY_PERCENT)
+            color_hints.extend([FIFTY_PERCENT] * (len(stops) - 1))
+            color_stops.extend(stops)
+            previous_was_color_stop = True
+
+    if not previous_was_color_stop:
+        raise InvalidValues
+
+    return color_stops, color_hints
+
+
 def parse_color_stops_and_hints(color_stops_hints):
     if not color_stops_hints:
         raise InvalidValues
@@ -274,6 +342,50 @@ def parse_radial_gradient_parameters(arguments):
         size or ('keyword', 'farthest-corner'),
         position or ('left', FIFTY_PERCENT, 'top', FIFTY_PERCENT),
         arguments[1:])
+
+
+def parse_conic_gradient_parameters(arguments):
+    """Parse ``[from <angle>]? [at <position>]?`` prefix of a conic gradient.
+
+    See https://drafts.csswg.org/css-images-4/#conic-gradient-syntax.
+
+    Return ``(angle, position, color_stops_arguments)`` where ``angle`` is the
+    starting angle in radians (defaulting to 0) and ``position`` is a
+    ``(origin_x, pos_x, origin_y, pos_y)`` tuple (defaulting to the center).
+
+    """
+    first_arg = arguments[0]
+    angle = 0
+    position = ('left', FIFTY_PERCENT, 'top', FIFTY_PERCENT)
+    stack = first_arg[::-1]
+    seen_from = seen_at = False
+    consumed = False
+    while stack:
+        keyword = get_keyword(stack[-1])
+        if keyword == 'from' and not seen_from and not seen_at:
+            stack.pop()
+            if not stack:
+                return
+            parsed_angle = get_angle(stack.pop())
+            if parsed_angle is None:
+                return
+            angle = parsed_angle
+            seen_from = True
+            consumed = True
+        elif keyword == 'at' and not seen_at:
+            stack.pop()
+            parsed_position = parse_position(stack[::-1])
+            if parsed_position is None:
+                return
+            position = parsed_position
+            seen_at = True
+            consumed = True
+            stack = []
+        else:
+            break
+    if consumed:
+        return angle, position, arguments[1:]
+    return angle, position, arguments
 
 
 def split_on_comma(tokens):
@@ -457,7 +569,7 @@ def get_resolution(token):
 
 def get_image(token, base_url):
     """Parse an <image> token."""
-    from ..images import LinearGradient, RadialGradient
+    from ..images import ConicGradient, LinearGradient, RadialGradient
 
     if parsed_url := get_url(token, base_url):
         assert parsed_url[0] == 'url'
@@ -485,6 +597,14 @@ def get_image(token, base_url):
         color_stops, color_hints = parse_color_stops_and_hints(color_stops)
         return 'radial-gradient', RadialGradient(
             color_stops, shape, size, position, repeating, color_hints)
+    elif function.name in ('conic-gradient', 'repeating-conic-gradient'):
+        result = parse_conic_gradient_parameters(arguments)
+        if result is None:
+            return
+        angle, position, color_stops = result
+        color_stops, color_hints = parse_angular_color_stops_and_hints(color_stops)
+        return 'conic-gradient', ConicGradient(
+            color_stops, angle, position, repeating, color_hints)
 
 
 def get_url(token, base_url):

@@ -939,3 +939,236 @@ class RadialGradient(Gradient):
             size_x = 1e7
             size_y = 1e-7
         return size_x, size_y
+
+
+class ConicGradient(Gradient):
+    """CSS ``conic-gradient()`` and ``repeating-conic-gradient()``.
+
+    PDF has no native conic shading, so the gradient is rasterized to an RGBA
+    image with Pillow and embedded as an image XObject scaled to the box.
+
+    See https://drafts.csswg.org/css-images-4/#conic-gradients.
+
+    """
+    # Maximum side length of the rasterized image, in pixels. The PDF viewer
+    # interpolates the (small) image up to the box size; this keeps the pure
+    # Python rasterization fast while staying visually smooth.
+    MAX_RASTER_SIZE = 512
+    # Number of angular samples in the color lookup table.
+    LUT_SIZE = 1024
+
+    def __init__(self, color_stops, from_angle, center, repeating, color_hints):
+        super().__init__(color_stops, repeating, color_hints)
+        # Starting angle, in radians, measured clockwise from the top (12
+        # o’clock direction), as in the CSS spec.
+        self.from_angle = from_angle
+        # (origin_x, pos_x, origin_y, pos_y) center position.
+        self.center = center
+
+    def get_intrinsic_size(self, image_resolution, font_size):
+        return None, None, None
+
+    def _resolve_positions(self):
+        """Resolve angular color-stop positions to floats in turns ([0, 1]).
+
+        Angles are converted to turns (1 turn == 2π rad), percentages map 100%
+        to one full turn. Returns ``(positions, colors)`` where positions are
+        increasing floats and colors are ``(r, g, b, a)`` tuples in [0, 1].
+
+        """
+        full_turn = 2 * math.pi
+
+        def to_turn(dimension):
+            if dimension is None:
+                return None
+            if dimension.unit == '%':
+                return dimension.value / 100
+            # Stored in radians by the parser.
+            return dimension.value / full_turn
+
+        positions = [to_turn(position) for position in self.stop_positions]
+        colors = [tuple(color) for color in self.colors]
+
+        # First and last default to 0 and 1.
+        if positions[0] is None:
+            positions[0] = 0
+        if positions[-1] is None:
+            positions[-1] = 1
+
+        # Make positions non-decreasing (a stop never moves before a previous).
+        previous = positions[0]
+        for i, position in enumerate(positions):
+            if position is not None:
+                if position < previous:
+                    positions[i] = previous
+                else:
+                    previous = position
+
+        # Interpolate missing positions evenly between defined ones.
+        previous_i = 0
+        for i, position in enumerate(positions):
+            if position is not None and i != 0:
+                base = positions[previous_i]
+                increment = (position - base) / (i - previous_i)
+                for j in range(previous_i + 1, i):
+                    positions[j] = base + (j - previous_i) * increment
+                previous_i = i
+
+        return positions, colors
+
+    def _build_lut(self):
+        """Build the angular color lookup table as a flat RGBA bytes buffer."""
+        positions, colors = self._resolve_positions()
+
+        # Resolve color hints (midpoints) to turns relative to each stop pair.
+        full_turn = 2 * math.pi
+        hints = []
+        for i, hint in enumerate(self.color_hints):
+            start, end = positions[i], positions[i + 1]
+            span = end - start
+            if hint is None:
+                hints.append(0.5)
+                continue
+            if hint.unit == '%':
+                hint_turn = hint.value / 100
+            else:
+                hint_turn = hint.value / full_turn
+            if span <= 0:
+                hints.append(0.5)
+            else:
+                hints.append(min(max((hint_turn - start) / span, 0), 1))
+
+        first, last = positions[0], positions[-1]
+        total = last - first
+
+        lut = bytearray(self.LUT_SIZE * 4)
+        n = len(positions)
+        for index in range(self.LUT_SIZE):
+            turn = index / self.LUT_SIZE
+            if self.repeating and total > 0:
+                # Map into the defined range, wrapping around.
+                turn = first + ((turn - first) % total)
+            # Find the stop segment containing this turn.
+            if turn <= positions[0]:
+                r, g, b, a = colors[0]
+            elif turn >= positions[-1]:
+                r, g, b, a = colors[-1]
+            else:
+                for i in range(n - 1):
+                    start, end = positions[i], positions[i + 1]
+                    if start <= turn <= end:
+                        if end == start:
+                            r, g, b, a = colors[i + 1]
+                        else:
+                            fraction = (turn - start) / (end - start)
+                            # Apply the color hint (midpoint) using the same
+                            # exponential interpolation as CSS.
+                            hint = hints[i]
+                            if hint <= 0:
+                                fraction = 1
+                            elif hint >= 1:
+                                fraction = 0
+                            elif hint != 0.5:
+                                exponent = math.log(0.5) / math.log(hint)
+                                fraction = fraction ** exponent
+                            c0 = colors[i]
+                            c1 = colors[i + 1]
+                            # Premultiplied interpolation for correct alpha.
+                            a0, a1 = c0[3], c1[3]
+                            pr0, pg0, pb0 = c0[0] * a0, c0[1] * a0, c0[2] * a0
+                            pr1, pg1, pb1 = c1[0] * a1, c1[1] * a1, c1[2] * a1
+                            a = a0 + (a1 - a0) * fraction
+                            pr = pr0 + (pr1 - pr0) * fraction
+                            pg = pg0 + (pg1 - pg0) * fraction
+                            pb = pb0 + (pb1 - pb0) * fraction
+                            if a == 0:
+                                r = g = b = 0
+                            else:
+                                r, g, b = pr / a, pg / a, pb / a
+                        break
+                else:  # pragma: no cover
+                    r, g, b, a = colors[-1]
+            offset = index * 4
+            lut[offset] = max(0, min(255, round(r * 255)))
+            lut[offset + 1] = max(0, min(255, round(g * 255)))
+            lut[offset + 2] = max(0, min(255, round(b * 255)))
+            lut[offset + 3] = max(0, min(255, round(a * 255)))
+        return bytes(lut)
+
+    def _rasterize(self, width, height):
+        """Rasterize the conic gradient into an RGBA Pillow image."""
+        # Cap raster resolution; the PDF viewer interpolates to the box size.
+        scale = min(1, self.MAX_RASTER_SIZE / max(width, height, 1))
+        raster_width = max(1, min(self.MAX_RASTER_SIZE, round(width * scale)))
+        raster_height = max(1, min(self.MAX_RASTER_SIZE, round(height * scale)))
+
+        # Resolve the center within the (full-size) box, then scale to raster.
+        origin_x, pos_x, origin_y, pos_y = self.center
+        center_x = percentage(pos_x, None, width)
+        center_y = percentage(pos_y, None, height)
+        if origin_x == 'right':
+            center_x = width - center_x
+        if origin_y == 'bottom':
+            center_y = height - center_y
+        center_x *= raster_width / width if width else 0
+        center_y *= raster_height / height if height else 0
+
+        lut = self._build_lut()
+        lut_size = self.LUT_SIZE
+        from_angle = self.from_angle
+        two_pi = 2 * math.pi
+        atan2 = math.atan2
+
+        data = bytearray(raster_width * raster_height * 4)
+        out = 0
+        for y in range(raster_height):
+            dy = (y + 0.5) - center_y
+            for x in range(raster_width):
+                dx = (x + 0.5) - center_x
+                # CSS angle: 0 at top (12 o’clock), increasing clockwise.
+                angle = atan2(dx, -dy) - from_angle
+                turn = (angle / two_pi) % 1.0
+                index = int(turn * lut_size)
+                if index >= lut_size:
+                    index = lut_size - 1
+                offset = index * 4
+                data[out] = lut[offset]
+                data[out + 1] = lut[offset + 1]
+                data[out + 2] = lut[offset + 2]
+                data[out + 3] = lut[offset + 3]
+                out += 4
+
+        return Image.frombytes(
+            'RGBA', (raster_width, raster_height), bytes(data))
+
+    def draw(self, stream, concrete_width, concrete_height, style):
+        if concrete_width <= 0 or concrete_height <= 0:
+            return
+
+        # Single color: paint a solid rectangle, matching other gradients.
+        if len(self.colors) == 1:
+            stream.rectangle(0, 0, concrete_width, concrete_height)
+            stream.set_color(self.colors[0])
+            stream.fill()
+            return
+
+        pillow_image = self._rasterize(concrete_width, concrete_height)
+        pillow_image.format = 'PNG'
+
+        # Build a deterministic id from the gradient definition so identical
+        # gradients are de-duplicated within a document.
+        key = md5(
+            repr((
+                tuple(tuple(color) for color in self.colors),
+                tuple(
+                    (position.value, position.unit) if position is not None
+                    else None for position in self.stop_positions),
+                tuple(
+                    (hint.value, hint.unit) if hint is not None else None
+                    for hint in self.color_hints),
+                self.from_angle, self.center, self.repeating,
+                round(concrete_width, 3), round(concrete_height, 3),
+            )).encode(), usedforsecurity=False).hexdigest()
+
+        image = RasterImage(pillow_image, f'conic-{key}', None, cache={})
+        image.draw(stream, concrete_width, concrete_height, style)

@@ -67,6 +67,41 @@ def test_background_blend_mode():
 
 
 @assert_no_logs
+@pytest.mark.parametrize('prefix', ['', 'repeating-'])
+def test_conic_gradient_background(prefix):
+    # A conic gradient has no native PDF shading, so it is rasterized and
+    # embedded as an image XObject for that box.
+    gradient = (
+        f'{prefix}conic-gradient(from 45deg at 30% 70%,'
+        ' red 0deg, blue 180deg, red 360deg)')
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        f' background-image: {gradient}">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # An image XObject must be emitted for the conic gradient.
+    assert b'/Subtype /Image' in pdf
+    assert b'/XObject' in pdf
+
+    # The output must differ from a solid background of the same size.
+    solid = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: none; background-color: red">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/Subtype /Image' not in solid
+    assert pdf != solid
+
+
+@assert_no_logs
+def test_conic_gradient_not_used_byte_identical():
+    # A document that does not use conic-gradient must be unaffected.
+    source = '<div style="width: 50px; height: 50px; background: red">a</div>'
+    first = FakeHTML(string=source).write_pdf()
+    second = FakeHTML(string=source).write_pdf()
+    assert first == second
+    assert b'/Subtype /Image' not in first
+
+
+@assert_no_logs
 def test_background_blend_mode_normal():
     # The default value must not emit any blend mode ExtGState.
     pdf = FakeHTML(string=(
@@ -437,6 +472,60 @@ def test_viewer_preferences_unchanged():
     explicit_none = FakeHTML(string=html).write_pdf(
         pdf_page_layout=None, pdf_page_mode=None, pdf_viewer_preferences=None)
     assert default == explicit_none
+
+
+@assert_no_logs
+def test_pdf_open_action_none():
+    # Documents not using the feature must not gain an /OpenAction.
+    pdf = FakeHTML(string='<body>').write_pdf()
+    assert b'/OpenAction' not in pdf
+
+
+@assert_no_logs
+def test_pdf_open_action_unchanged():
+    # Byte-identical output when the feature is not used.
+    html = '<h1 id=top>Hello</h1><p>World</p>'
+    default = FakeHTML(string=html).write_pdf()
+    explicit_none = FakeHTML(string=html).write_pdf(pdf_open_action=None)
+    assert default == explicit_none
+
+
+@assert_no_logs
+def test_pdf_open_action_anchor():
+    pdf = FakeHTML(string='''
+      <h1 id=top>Top</h1>
+      <p style="page-break-before: always" id=target>Target</p>
+    ''').write_pdf(pdf_open_action='target')
+    assert b'/OpenAction' in pdf
+    assert b'/S /GoTo' in pdf
+    assert b'/XYZ' in pdf
+
+
+@assert_no_logs
+def test_pdf_open_action_page_number():
+    pdf = FakeHTML(string='''
+      <p>One</p>
+      <p style="page-break-before: always">Two</p>
+    ''').write_pdf(pdf_open_action=2)
+    assert b'/OpenAction' in pdf
+    assert b'/S /GoTo' in pdf
+
+
+def test_pdf_open_action_missing_anchor():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='<body>Hello').write_pdf(
+            pdf_open_action='nope')
+    assert b'/OpenAction' not in pdf
+    assert len(logs) == 1
+    assert 'pdf_open_action' in logs[0]
+
+
+def test_pdf_open_action_page_out_of_range():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='<body>Hello').write_pdf(pdf_open_action=5)
+    assert b'/OpenAction' not in pdf
+    assert len(logs) == 1
+    assert 'out of range' in logs[0]
 
 
 @assert_no_logs
@@ -1086,3 +1175,54 @@ def test_clip_path_none():
         'clip-path: none"></div>'
     )).write_pdf(uncompressed_pdf=True)
     assert b'10 10 80 80 re' not in pdf
+
+
+@assert_no_logs
+def test_layer_optional_content_group():
+    # An element with -weasy-layer is assigned to a named PDF optional content
+    # group (layer) and its drawing is wrapped in /OC ... BDC ... EMC.
+    pdf = FakeHTML(string=(
+        '<div style="-weasy-layer: foo">layered</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # The catalog gets an /OCProperties dictionary listing the OCG.
+    assert b'/OCProperties' in pdf
+    # An OCG dictionary named 'foo' is emitted.
+    assert b'/Type /OCG' in pdf
+    assert b'/Name (foo)' in pdf
+    # The content is wrapped in an optional-content marked-content block.
+    assert re.search(rb'/OC /oc\d+ BDC', pdf)
+    assert b'EMC' in pdf
+    # The page resources reference the OCG under /Properties.
+    assert b'/Properties' in pdf
+
+
+@assert_no_logs
+def test_layer_shared_and_distinct():
+    # Elements sharing a name belong to one OCG; distinct names get distinct
+    # OCGs.
+    pdf = FakeHTML(string=(
+        '<div style="-weasy-layer: foo">A</div>'
+        '<div style="-weasy-layer: bar">B</div>'
+        '<div style="-weasy-layer: foo">C</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Exactly one OCG dict per distinct name.
+    assert pdf.count(b'/Name (foo)') == 1
+    assert pdf.count(b'/Name (bar)') == 1
+    # Three marked-content blocks (one per element), the two 'foo' elements
+    # sharing the same property key.
+    blocks = re.findall(rb'/OC /(oc\d+) BDC', pdf)
+    assert len(blocks) == 3
+    assert blocks[0] == blocks[2]
+    assert blocks[0] != blocks[1]
+
+
+@assert_no_logs
+def test_layer_not_used_byte_identical():
+    # A document that never uses -weasy-layer must be unaffected: no
+    # /OCProperties, and identical bytes across runs.
+    source = '<div style="width: 50px; height: 50px; background: red">a</div>'
+    first = FakeHTML(string=source).write_pdf()
+    second = FakeHTML(string=source).write_pdf()
+    assert first == second
+    assert b'/OCProperties' not in first
+    assert b'/OCG' not in first
