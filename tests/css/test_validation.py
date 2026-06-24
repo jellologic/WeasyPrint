@@ -1319,3 +1319,50 @@ def test_color_scheme(rule, value):
 ])
 def test_color_scheme_invalid(rule):
     assert_invalid(f'color-scheme: {rule}')
+
+
+@assert_no_logs
+def test_box_shadow_none():
+    assert get_value('box-shadow: none') == ('none',)
+
+
+@assert_no_logs
+def test_box_shadow_offsets():
+    value = get_value('box-shadow: 3px 4px red')
+    assert len(value) == 1
+    inset, color, ox, oy, blur, spread = value[0]
+    assert inset is False
+    assert color is not None
+    assert (ox, oy) == ((3, 'px'), (4, 'px'))
+    assert blur == (0, None)
+    assert spread == (0, None)
+
+
+@assert_no_logs
+def test_box_shadow_inset_blur_spread():
+    value = get_value('box-shadow: inset 1px 2px 3px 4px black')
+    inset, color, ox, oy, blur, spread = value[0]
+    assert inset is True
+    assert (ox, oy, blur, spread) == ((1, 'px'), (2, 'px'), (3, 'px'), (4, 'px'))
+
+
+@assert_no_logs
+def test_box_shadow_list():
+    value = get_value('box-shadow: 1px 1px red, inset -2px -2px 3px blue')
+    assert len(value) == 2
+    assert value[0][0] is False
+    assert value[1][0] is True
+
+
+@assert_no_logs
+@pytest.mark.parametrize('rule', [
+    'box-shadow: 3px',
+    'box-shadow: red',
+    'box-shadow: 1px 1px -3px red',
+    'box-shadow: inset inset 1px 1px red',
+    'box-shadow: 1px 2px 3px 4px 5px red',
+    'box-shadow: 1px 1px red blue',
+    'box-shadow: 1px 1px 50%',
+])
+def test_box_shadow_invalid(rule):
+    assert_invalid(rule)

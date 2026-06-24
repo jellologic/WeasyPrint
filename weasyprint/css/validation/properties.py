@@ -168,6 +168,44 @@ def color(token):
         return token
 
 
+@property()
+@comma_separated_list
+def box_shadow(tokens):
+    """``box-shadow`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+
+    inset = False
+    color = None
+    lengths = []
+    for token in tokens:
+        if get_keyword(token) == 'inset':
+            if inset:
+                return  # Duplicate 'inset'
+            inset = True
+            continue
+        length = get_length(token)
+        if length is not None:
+            if len(lengths) >= 4:
+                return  # Too many lengths
+            lengths.append(length)
+            continue
+        if color is None and parse_color(token):
+            color = token
+            continue
+        return  # Unexpected token
+
+    if not 2 <= len(lengths) <= 4:
+        return
+
+    offset_x, offset_y = lengths[0], lengths[1]
+    blur = lengths[2] if len(lengths) > 2 else Dimension(0, None)
+    spread = lengths[3] if len(lengths) > 3 else Dimension(0, None)
+    if blur.value < 0:
+        return  # blur-radius must be non-negative
+    return (inset, color, offset_x, offset_y, blur, spread)
+
+
 @property('background-image', wants_base_url=True)
 @comma_separated_list
 @single_token

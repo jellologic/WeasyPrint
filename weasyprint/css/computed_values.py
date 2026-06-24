@@ -395,6 +395,24 @@ def bleed(style, name, value):
     return length(style, name, value)
 
 
+@register_computer('box-shadow')
+def box_shadow(style, name, values):
+    """Compute the ``box-shadow`` property."""
+    if values == 'none' or values == ('none',):
+        return 'none'
+    computed = []
+    for inset, color, offset_x, offset_y, blur, spread in values:
+        computed.append((
+            inset,
+            parse_color(color, style['color_scheme']) if color else None,
+            length(style, name, offset_x, pixels_only=True),
+            length(style, name, offset_y, pixels_only=True),
+            length(style, name, blur, pixels_only=True),
+            length(style, name, spread, pixels_only=True),
+        ))
+    return tuple(computed)
+
+
 @register_computer('letter-spacing')
 def pixel_length(style, name, value):
     if value == 'normal':

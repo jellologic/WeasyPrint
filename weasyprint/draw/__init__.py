@@ -11,8 +11,138 @@ from ..layout.background import BackgroundLayer
 from ..matrix import Matrix
 from ..stacking import StackingContext
 from .border import draw_border, draw_line, draw_outline, rounded_box, set_mask_border
-from .color import styled_color
+from .color import get_color, styled_color
 from .text import draw_text
+
+
+def _adjust_radius(radius, delta):
+    """Adjust a single corner ``(rx, ry)`` for spread, per CSS spec.
+
+    A zero corner radius stays sharp; a positive one grows/shrinks by
+    ``delta`` (clamped to zero).
+
+    """
+    rx, ry = radius
+    rx = 0 if rx == 0 else max(0, rx + delta)
+    ry = 0 if ry == 0 else max(0, ry + delta)
+    return (rx, ry)
+
+
+def _spread_radii(radii, delta, dx, dy):
+    """Grow (``delta`` > 0) or shrink a rounded-box, then translate it."""
+    x, y, w, h, tl, tr, br, bl = radii
+    return (
+        x - delta + dx, y - delta + dy, w + 2 * delta, h + 2 * delta,
+        _adjust_radius(tl, delta), _adjust_radius(tr, delta),
+        _adjust_radius(br, delta), _adjust_radius(bl, delta))
+
+
+def draw_box_shadow(stream, box, inset):
+    """Draw the ``box-shadow`` of a box.
+
+    If ``inset`` is true, draw the inset shadows (clipped inside the padding
+    box), otherwise draw the outer shadows (behind the box).
+
+    """
+    shadows = box.style['box_shadow']
+    if shadows == 'none':
+        return
+    # Painting order: the first shadow in the list is painted on top, so paint
+    # in reverse order.
+    for shadow in reversed(shadows):
+        is_inset, color, offset_x, offset_y, blur, spread = shadow
+        if is_inset != inset:
+            continue
+        if color is None:
+            color = get_color(box.style, 'color')
+        else:
+            color = color if color != 'currentcolor' else box.style['color']
+        if color.alpha == 0:
+            continue
+        if inset:
+            draw_inset_box_shadow(
+                stream, box, color, offset_x, offset_y, blur, spread)
+        else:
+            draw_outer_box_shadow(
+                stream, box, color, offset_x, offset_y, blur, spread)
+
+
+def draw_outer_box_shadow(stream, box, color, offset_x, offset_y, blur, spread):
+    """Draw a single outer (drop) box-shadow behind the box."""
+    with stream.artifact(), stream.stacked():
+        # Clip out the border box so the shadow only shows behind the box.
+        x1, y1, x2, y2 = stream.page_rectangle
+        stream.rectangle(x1, y1, x2 - x1, y2 - y1)
+        rounded_box(stream, box.rounded_border_box())
+        stream.clip(even_odd=True)
+        stream.end()
+
+        # Shadow shape: border box expanded by the spread radius and translated
+        # by the offset.
+        shape = _spread_radii(
+            box.rounded_border_box(), spread, offset_x, offset_y)
+        _paint_shadow_shape(stream, shape, color, blur, inset=False)
+
+
+def draw_inset_box_shadow(stream, box, color, offset_x, offset_y, blur, spread):
+    """Draw a single inset box-shadow clipped inside the padding box."""
+    with stream.artifact(), stream.stacked():
+        # Clip to the padding box so the shadow stays inside.
+        padding = box.rounded_padding_box()
+        rounded_box(stream, padding)
+        stream.clip()
+        stream.end()
+
+        # Shadow shape: padding box shrunk by the spread radius and translated
+        # by the offset. The painted region is the area *outside* this shape.
+        inner = _spread_radii(padding, -spread, offset_x, offset_y)
+        _paint_shadow_shape(stream, inner, color, blur, inset=True, clip=padding)
+
+
+def _paint_shadow_shape(stream, shape, color, blur, inset, clip=None):
+    """Fill ``shape`` with ``color``, approximating a Gaussian blur edge."""
+    if blur <= 0:
+        with stream.stacked():
+            stream.set_color(color)
+            if inset:
+                # Fill the padding box minus the inner shape (even-odd).
+                rounded_box(stream, clip)
+                rounded_box(stream, shape)
+                stream.fill(even_odd=True)
+            else:
+                rounded_box(stream, shape)
+                stream.fill()
+        return
+
+    # Blur approximation: paint concentric translucent layers feathering the
+    # edge over the blur radius. Each layer grows the shape from -blur to +blur
+    # with a triangular alpha falloff peaking at the shape edge, mimicking a
+    # Gaussian profile when accumulated.
+    layers = max(4, min(24, round(blur)))
+    base_alpha = color.alpha
+    for index in range(layers + 1):
+        ratio = index / layers
+        # Signed distance from the shape edge, from -blur (inside) to +blur.
+        grow = (ratio - 0.5) * 2 * blur
+        alpha = base_alpha * (1 - abs(ratio - 0.5) * 2) * 2 / layers
+        if alpha <= 0:
+            continue
+        layer_color = color.__class__(
+            color.space, color[:-1], alpha=min(1, alpha))
+        # Outer shadows feather outwards; inset shadows feather inwards.
+        delta = grow if not inset else -grow
+        new_shape = _spread_radii(shape, delta, 0, 0)
+        if new_shape[2] <= 0 or new_shape[3] <= 0:
+            continue
+        with stream.stacked():
+            stream.set_color(layer_color)
+            if inset:
+                rounded_box(stream, clip)
+                rounded_box(stream, new_shape)
+                stream.fill(even_odd=True)
+            else:
+                rounded_box(stream, new_shape)
+                stream.fill()
 
 
 def draw_page(page, stream):
@@ -82,7 +212,9 @@ def draw_stacking_context(stream, stacking_context):
                             boxes.GridContainerBox, boxes.ReplacedBox)):
             set_mask_border(stream, box)
             # The canvas background was removed by layout_backgrounds.
+            draw_box_shadow(stream, box, inset=False)
             draw_background(stream, box.background)
+            draw_box_shadow(stream, box, inset=True)
             draw_border(stream, box)
 
         with stream.stacked():
@@ -109,7 +241,9 @@ def draw_stacking_context(stream, stacking_context):
                 if isinstance(block, boxes.TableBox):
                     draw_table(stream, block)
                 else:
+                    draw_box_shadow(stream, block, inset=False)
                     draw_background(stream, block.background)
+                    draw_box_shadow(stream, block, inset=True)
                     draw_border(stream, block)
 
             # Point 5.
@@ -330,7 +464,9 @@ def draw_background_image(stream, layer, style):
 
 def draw_table(stream, table):
     # Draw backgrounds.
+    draw_box_shadow(stream, table, inset=False)
     draw_background(stream, table.background)
+    draw_box_shadow(stream, table, inset=True)
     for column_group in table.column_groups:
         draw_background(stream, column_group.background)
         for column in column_group.children:

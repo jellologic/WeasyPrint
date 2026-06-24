@@ -53,6 +53,53 @@ def test_mix_blend_mode_normal():
 
 
 @assert_no_logs
+def test_box_shadow_sharp():
+    # A sharp (blur 0) red drop shadow offset by 3px must emit a red rectangle
+    # offset from the box (at margin 8px) behind it.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white; '
+        'box-shadow: 3px 3px 0 red"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'1 0 0 rg' in pdf  # Red fill colour.
+    # The red shadow rectangle is offset by 3px from the box border box
+    # (which sits at the page origin with FakeHTML's zero margins).
+    assert b'3 3 50 50 re' in pdf
+
+
+@assert_no_logs
+def test_box_shadow_spread():
+    # A spread-only shadow grows the box by the spread radius on each side.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; '
+        'box-shadow: 0 0 0 5px lime"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Box border box at 0 0 50 50, grown by 5px each side -> -5 -5 60 60.
+    assert b'-5 -5 60 60 re' in pdf
+
+
+@assert_no_logs
+def test_box_shadow_inset():
+    # An inset shadow is clipped inside the padding box and filled with the
+    # even-odd rule.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white; '
+        'box-shadow: inset 4px 4px 0 black"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'0 0 0 rg' in pdf  # Black fill colour.
+    assert b'f*' in pdf  # Even-odd fill used for the inset ring.
+
+
+@assert_no_logs
+def test_box_shadow_none():
+    # The default value must not emit any extra fill operators.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px; background: white"></div>'
+    )).write_pdf(uncompressed_pdf=True)
+    # Canvas + the div white background fill, but no shadow fills.
+    assert pdf.count(b' rg') == 2
+
+
+@assert_no_logs
 def test_bookmarks_1():
     pdf = FakeHTML(string='''
       <h1>a</h1>  #
