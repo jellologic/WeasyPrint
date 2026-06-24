@@ -354,13 +354,30 @@ class Document:
         compress = not options['uncompressed_pdf']
         version = options['pdf_version']
 
+        # Build the encryption handler if a password or permission set is given.
+        encryption = None
+        user_password = options['pdf_user_password']
+        owner_password = options['pdf_owner_password']
+        permissions = options['pdf_permissions']
+        if not (user_password is None and owner_password is None and
+                permissions is None):
+            import pydyf
+            kwargs = {}
+            if user_password is not None:
+                kwargs['user_password'] = user_password
+            if owner_password is not None:
+                kwargs['owner_password'] = owner_password
+            if permissions is not None:
+                kwargs['permissions'] = permissions
+            encryption = pydyf.Encryption(**kwargs)
+
         if target is None:
             output = io.BytesIO()
-            pdf.write(output, version, identifier, compress)
+            pdf.write(output, version, identifier, compress, encryption)
             return output.getvalue()
 
         if hasattr(target, 'write'):
-            pdf.write(target, version, identifier, compress)
+            pdf.write(target, version, identifier, compress, encryption)
         else:
             with open(target, 'wb') as fd:
-                pdf.write(fd, version, identifier, compress)
+                pdf.write(fd, version, identifier, compress, encryption)
