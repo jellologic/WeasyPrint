@@ -43,6 +43,11 @@ class Page:
             side: page_box.style[f'bleed_{side}'].value
             for side in ('top', 'right', 'bottom', 'left')}
 
+        #: The PDF page label specification, either ``'auto'`` or a
+        #: ``(style, prefix, start)`` :obj:`tuple` coming from the
+        #: ``-weasy-pdf-page-label`` property.
+        self.pdf_page_label = page_box.style['pdf_page_label']
+
         #: The :obj:`list` of ``(level, label, target, state)``
         #: :obj:`tuples <tuple>`. ``level`` and ``label`` are respectively an
         #: :obj:`int` and a :obj:`string <str>`, based on the CSS properties

@@ -1471,6 +1471,117 @@ def parse_page_selectors(rule):
     return page_data
 
 
+def _supports_declaration(block, base_url):
+    """Return whether a ``( declaration )`` supports test is satisfied."""
+    declaration = tinycss2.parse_one_declaration(block.content, skip_comments=True)
+    if declaration.type != 'declaration':
+        return False
+    # A declaration is supported iff WeasyPrint validates it to a value.
+    # Silence warnings emitted by preprocess_declarations during the test.
+    previous_level = LOGGER.level
+    LOGGER.setLevel(100)
+    try:
+        results = list(preprocess_declarations(base_url, [declaration]))
+    except Exception:
+        return False
+    finally:
+        LOGGER.setLevel(previous_level)
+    return bool(results)
+
+
+def _supports_selector(function):
+    """Return whether a ``selector(<sel>)`` supports test is satisfied."""
+    try:
+        cssselect2.compile_selector_list(function.arguments)
+    except cssselect2.SelectorError:
+        return False
+    except Exception:
+        return False
+    return True
+
+
+def _evaluate_supports_in_parens(tokens, base_url):
+    """Evaluate a ``<supports-in-parens>`` from a list of non-whitespace tokens.
+
+    ``tokens`` must contain exactly one significant token (a parentheses block
+    or a function). Return ``True``/``False`` for the condition, or ``None`` if
+    the syntax is invalid.
+
+    """
+    if len(tokens) != 1:
+        return None
+    token = tokens[0]
+    if token.type == 'function':
+        if token.lower_name == 'selector':
+            return _supports_selector(token)
+        # Unknown function condition (e.g. font-tech()) is unsupported.
+        return False
+    if token.type == '() block':
+        content = [
+            child for child in token.content
+            if child.type not in ('whitespace', 'comment')]
+        if not content:
+            return None
+        # Nested condition: ( <supports-condition> ).
+        if content[0].type == 'ident' and content[0].lower_value == 'not':
+            return _evaluate_supports_condition(token.content, base_url)
+        for child in content:
+            if child.type == 'ident' and child.lower_value in ('and', 'or'):
+                return _evaluate_supports_condition(token.content, base_url)
+        # ( <declaration> ): supports test for a property/value pair.
+        if content[0].type == 'ident':
+            return _supports_declaration(token, base_url)
+        return None
+    return None
+
+
+def _evaluate_supports_condition(prelude, base_url):
+    """Evaluate a CSS ``@supports`` condition.
+
+    Return ``True`` if the condition is satisfied, ``False`` if not, and
+    ``None`` if the condition could not be parsed.
+
+    """
+    tokens = [
+        token for token in prelude
+        if token.type not in ('whitespace', 'comment')]
+    if not tokens:
+        return None
+
+    # not <supports-in-parens>
+    if tokens[0].type == 'ident' and tokens[0].lower_value == 'not':
+        result = _evaluate_supports_in_parens(tokens[1:], base_url)
+        return None if result is None else not result
+
+    result = _evaluate_supports_in_parens(tokens[:1], base_url)
+    if result is None:
+        return None
+    rest = tokens[1:]
+    if not rest:
+        return result
+
+    # <supports-in-parens> [and|or <supports-in-parens>]*
+    combinator = None
+    while rest:
+        keyword = rest[0]
+        if keyword.type != 'ident' or keyword.lower_value not in ('and', 'or'):
+            return None
+        if combinator is None:
+            combinator = keyword.lower_value
+        elif keyword.lower_value != combinator:
+            # Mixing 'and' and 'or' without parentheses is invalid.
+            return None
+        operand = _evaluate_supports_in_parens(rest[1:2], base_url)
+        if operand is None:
+            return None
+        if combinator == 'and':
+            result = result and operand
+        else:
+            result = result or operand
+        rest = rest[2:]
+    return result
+
+
 def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fetcher,
                           matcher, page_rules, layers, font_config, counter_style,
                           color_profiles, ignore_imports=False, layer=None):
@@ -1605,6 +1716,24 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
                 page_rules, layers, font_config, counter_style, color_profiles,
                 ignore_imports=True)
+
+        elif rule.type == 'at-rule' and rule.lower_at_keyword == 'supports':
+            supported = _evaluate_supports_condition(rule.prelude, base_url)
+            if supported is None:
+                LOGGER.warning(
+                    'Invalid @supports condition %r, '
+                    'the whole @supports rule was ignored at %d:%d.',
+                    tinycss2.serialize(rule.prelude),
+                    rule.source_line, rule.source_column)
+                continue
+            if not supported:
+                continue
+            ignore_imports = True
+            content_rules = tinycss2.parse_rule_list(rule.content)
+            preprocess_stylesheet(
+                device_media_type, base_url, content_rules, url_fetcher, matcher,
+                page_rules, layers, font_config, counter_style, color_profiles,
+                ignore_imports=True, layer=layer)
 
         elif rule.type == 'at-rule' and rule.lower_at_keyword == 'page':
             data = parse_page_selectors(rule)

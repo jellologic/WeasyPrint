@@ -42,6 +42,7 @@ INITIAL_VALUES = {
 
     # Backgrounds and Borders 3 (CR): https://www.w3.org/TR/css-backgrounds-3/
     'background_attachment': ('scroll',),
+    'background_blend_mode': ('normal',),
     'background_clip': ('border-box',),
     'background_color': 'transparent',
     'background_image': (('none', None),),
@@ -164,6 +165,12 @@ INITIAL_VALUES = {
     'bleed_top': 'auto',
     'bleed_bottom': 'auto',
     'marks': (),  # computed value for 'none'
+
+    # Proprietary: PDF page labels (number tree in PDF catalog)
+    # Value is either 'auto' or a tuple (style, prefix, start) where style is
+    # one of 'decimal'/'lower-roman'/'upper-roman'/'lower-alpha'/'upper-alpha'/
+    # 'none', prefix is a string (possibly empty) and start is an int or None.
+    'pdf_page_label': 'auto',
 
     # Text 3/4 (WD/WD): https://www.w3.org/TR/css-text-4/
     'hyphenate_character': '‐',  # computed value chosen by the user agent

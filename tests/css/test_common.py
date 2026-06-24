@@ -261,3 +261,38 @@ def test_media_queries(media, width, warning):
     html, = page._page_box.children
     assert html.width == width
     assert (logs if warning else not logs)
+
+
+@assert_no_logs
+@pytest.mark.parametrize(('media', 'applies'), [
+    # Default render is media type 'print', page area A4 portrait (~794px wide,
+    # ~1123px tall), output resolution 1 dppx (96 dpi).
+    ('@media (min-width: 1px) { p { color: lime } }', True),
+    ('@media (min-width: 99999px) { p { color: lime } }', False),
+    ('@media (max-width: 99999px) { p { color: lime } }', True),
+    ('@media (max-width: 1px) { p { color: lime } }', False),
+    ('@media (orientation: portrait) { p { color: lime } }', True),
+    ('@media (orientation: landscape) { p { color: lime } }', False),
+    ('@media print and (min-width: 1px) { p { color: lime } }', True),
+    ('@media print and (min-width: 99999px) { p { color: lime } }', False),
+    ('@media screen and (min-width: 1px) { p { color: lime } }', False),
+    ('@media (width >= 100px) { p { color: lime } }', True),
+    ('@media (width <= 1px) { p { color: lime } }', False),
+    ('@media (min-resolution: 1dppx) { p { color: lime } }', True),
+    ('@media (min-resolution: 2dppx) { p { color: lime } }', False),
+    ('@media not print { p { color: lime } }', False),
+    ('@media screen, (min-width: 1px) { p { color: lime } }', True),
+])
+def test_media_feature_queries(media, applies):
+    # ``red`` is the fallback; ``lime`` is applied only if the @media block
+    # contributes styles.
+    document = FakeHTML(string='<p>a</p>')
+    page, = document.render(stylesheets=[
+        CSS(string='p { color: red } %s' % media)]).pages
+    html, = page._page_box.children
+    body, = html.children
+    p, = body.children
+    line, = p.children
+    text, = line.children
+    expected = (0, 1, 0, 1) if applies else (1, 0, 0, 1)
+    assert tuple(text.style['color']) == expected

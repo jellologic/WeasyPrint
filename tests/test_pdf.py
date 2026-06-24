@@ -53,6 +53,31 @@ def test_mix_blend_mode_normal():
 
 
 @assert_no_logs
+def test_background_blend_mode():
+    # Two background layers with a blend mode each: the first (topmost) layer
+    # uses multiply, the second uses screen. Both /BM operators must be emitted.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: linear-gradient(red, blue),'
+        ' linear-gradient(green, yellow);'
+        ' background-blend-mode: multiply, screen">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /Multiply' in pdf
+    assert b'/BM /Screen' in pdf
+
+
+@assert_no_logs
+def test_background_blend_mode_normal():
+    # The default value must not emit any blend mode ExtGState.
+    pdf = FakeHTML(string=(
+        '<div style="width: 50px; height: 50px;'
+        ' background-image: linear-gradient(red, blue);'
+        ' background-blend-mode: normal">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /' not in pdf
+
+
+@assert_no_logs
 def test_box_shadow_sharp():
     # A sharp (blur 0) red drop shadow offset by 3px must emit a red rectangle
     # offset from the box (at margin 8px) behind it.
@@ -464,6 +489,65 @@ def test_pdf_page_layout_unknown():
     assert b'/PageLayout' not in pdf
     assert len(logs) == 1
     assert 'pdf_page_layout' in logs[0]
+
+
+@assert_no_logs
+def test_pdf_page_labels_none():
+    # Documents not using the feature must not gain a /PageLabels number tree.
+    pdf = FakeHTML(string='<body>').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' not in pdf
+
+
+@assert_no_logs
+def test_pdf_page_labels_unchanged():
+    # Byte-identical output when the feature is not used.
+    html = '<style>div{page-break-after:always}</style><div>a</div><div>b</div>'
+    a = FakeHTML(string=html).write_pdf()
+    b = FakeHTML(string=html).write_pdf()
+    assert a == b
+    assert b'/PageLabels' not in a
+
+
+@assert_no_logs
+def test_pdf_page_labels_roman():
+    # Roman numerals on the first pages, decimal afterwards.
+    pdf = FakeHTML(string='''
+      <style>
+        @page { size: 100px 100px }
+        @page :first { -weasy-pdf-page-label: lower-roman }
+        div { page-break-after: always }
+      </style>
+      <div>i</div><div>1</div>
+    ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' in pdf
+    # First page uses lower-roman (/r), the rest default decimal (/D).
+    assert re.search(
+        br'/Nums \[0 <</S /r>> 1 <</S /D>>\]', pdf)
+
+
+@assert_no_logs
+def test_pdf_page_labels_prefix_and_start():
+    pdf = FakeHTML(string='''
+      <style>
+        @page { -weasy-pdf-page-label: decimal "A-" start(5) }
+      </style>
+      <body>Hello
+    ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' in pdf
+    assert b'/S /D' in pdf
+    assert b'/P (A-)' in pdf
+    assert b'/St 5' in pdf
+
+
+def test_pdf_page_labels_invalid():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='''
+          <style>@page { -weasy-pdf-page-label: bogus }</style>
+          <body>Hi
+        ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' not in pdf
+    assert len(logs) == 1
+    assert 'pdf-page-label' in logs[0]
 
 
 @assert_no_logs
