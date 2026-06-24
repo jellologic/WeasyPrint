@@ -1,10 +1,23 @@
 """Tests for images layout."""
 
+import base64
+import io
+
 import pytest
+from PIL import Image
 
 from weasyprint.formatting_structure import boxes
 
 from ..testing_utils import assert_no_logs, capture_logs, render_pages
+
+
+def dpi_png_data_uri(dpi, size=(4, 4)):
+    """Build a base64 PNG data URI with embedded ``dpi`` metadata."""
+    image = Image.new('RGB', size, 'red')
+    image_file = io.BytesIO()
+    image.save(image_file, format='PNG', dpi=(dpi, dpi))
+    encoded = base64.b64encode(image_file.getvalue()).decode('ascii')
+    return f'data:image/png;base64,{encoded}'
 
 
 def get_img(html):
@@ -41,6 +54,59 @@ def test_images_1(html):
     body, img = get_img(html)
     assert img.width == 4
     assert img.height == 4
+
+
+@assert_no_logs
+def test_image_resolution_from_image():
+    # A 4px image embedding 192 dpi (= 2 dppx) is intrinsically 2px wide/high
+    # when ``image-resolution: from-image`` honors the embedded DPI.
+    uri = dpi_png_data_uri(192)
+    body, img = get_img(
+        f'<img style="image-resolution: from-image" src="{uri}">')
+    assert img.width == pytest.approx(2, abs=1e-2)
+    assert img.height == pytest.approx(2, abs=1e-2)
+
+
+@assert_no_logs
+def test_image_resolution_from_image_no_dpi():
+    # Without embedded DPI, ``from-image`` falls back to the default 1 dppx,
+    # so the image keeps its pixel size.
+    body, img = get_img('<img style="image-resolution: from-image"'
+                        ' src="pattern.png">')
+    assert img.width == 4
+    assert img.height == 4
+
+
+@assert_no_logs
+def test_image_resolution_from_image_fallback():
+    # Without embedded DPI, ``from-image`` uses the given fallback resolution.
+    body, img = get_img('<img style="image-resolution: from-image 2dppx"'
+                        ' src="pattern.png">')
+    assert img.width == 2
+    assert img.height == 2
+
+
+@assert_no_logs
+def test_image_resolution_from_image_overrides_fallback():
+    # When the image has embedded DPI, it wins over the fallback resolution.
+    uri = dpi_png_data_uri(192)
+    body, img = get_img(
+        '<img style="image-resolution: from-image 4dppx"'
+        f' src="{uri}">')
+    assert img.width == pytest.approx(2, abs=1e-2)
+    assert img.height == pytest.approx(2, abs=1e-2)
+
+
+@assert_no_logs
+def test_image_resolution_snap():
+    # ``snap`` rounds the embedded resolution to the nearest integer dppx.
+    # 200 dpi is ~2.083 dppx, which snaps to 2 dppx -> 2px for a 4px image.
+    uri = dpi_png_data_uri(200)
+    body, img = get_img(
+        '<img style="image-resolution: from-image snap"'
+        f' src="{uri}">')
+    assert img.width == pytest.approx(2, abs=1e-2)
+    assert img.height == pytest.approx(2, abs=1e-2)
 
 
 @assert_no_logs

@@ -106,6 +106,18 @@ group.add_argument('--pdf-version', help='PDF version number')
 group.add_argument('--pdf-forms', action='store_true', help='include PDF forms')
 group.add_argument('--pdf-tags', action='store_true', help='tag PDF for accessibility')
 group.add_argument(
+    '--pdf-page-layout', dest='pdf_page_layout',
+    choices=(
+        'single-page', 'one-column', 'two-column-left', 'two-column-right',
+        'two-page-left', 'two-page-right'),
+    help='initial page layout when the PDF is opened in a viewer')
+group.add_argument(
+    '--pdf-page-mode', dest='pdf_page_mode',
+    choices=(
+        'none', 'outlines', 'thumbnails', 'full-screen', 'optional-content',
+        'attachments'),
+    help='how the document is displayed when opened in a viewer')
+group.add_argument(
     '--uncompressed-pdf', action='store_true',
     help='do not compress PDF content, mainly for debugging purpose')
 group.add_argument(

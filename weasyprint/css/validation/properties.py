@@ -1216,10 +1216,44 @@ def object_fit(keyword):
 
 
 @property(unstable=True)
-@single_token
-def image_resolution(token):
-    # TODO: support 'snap' and 'from-image'
-    return get_resolution(token)
+def image_resolution(tokens):
+    """``image-resolution`` property validation.
+
+    Syntax: ``[from-image || <resolution>] && snap?``.
+
+    The computed value is either a number (resolution in dppx) for the plain
+    ``<resolution>`` case, or a ``('from-image', fallback, snap)`` tuple when
+    ``from-image`` is requested, where ``fallback`` is a resolution in dppx (or
+    ``None``) used when the image has no embedded resolution.
+
+    """
+    from_image = False
+    snap = False
+    resolution = None
+    for token in tokens:
+        keyword = get_keyword(token)
+        if keyword == 'from-image':
+            if from_image:
+                return
+            from_image = True
+        elif keyword == 'snap':
+            if snap:
+                return
+            snap = True
+        elif (value := get_resolution(token)) is not None:
+            if resolution is not None:
+                return
+            resolution = value
+        else:
+            return
+    if from_image:
+        return ('from-image', resolution, snap)
+    if resolution is not None:
+        if snap:
+            return ('snap', resolution)
+        return resolution
+    # Only ``snap`` was given, which is not a valid value on its own.
+    return
 
 
 @property('letter-spacing')

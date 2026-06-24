@@ -56,6 +56,79 @@ def _w3c_date_to_pdf(string, attr_name):
     return f'D:{pdf_date}'
 
 
+# Mapping from friendly option values to PDF /PageLayout names.
+PAGE_LAYOUTS = {
+    'single-page': 'SinglePage',
+    'one-column': 'OneColumn',
+    'two-column-left': 'TwoColumnLeft',
+    'two-column-right': 'TwoColumnRight',
+    'two-page-left': 'TwoPageLeft',
+    'two-page-right': 'TwoPageRight',
+}
+
+# Mapping from friendly option values to PDF /PageMode names.
+PAGE_MODES = {
+    'none': 'UseNone',
+    'outlines': 'UseOutlines',
+    'thumbnails': 'UseThumbs',
+    'full-screen': 'FullScreen',
+    'optional-content': 'UseOC',
+    'attachments': 'UseAttachments',
+}
+
+
+def _pdf_name(value, mapping, option_name):
+    """Resolve a friendly value or a raw PDF name into a ``/Name`` token."""
+    if value is None:
+        return None
+    if value in mapping:
+        return f'/{mapping[value]}'
+    if value.startswith('/'):
+        # Raw PDF name passed through as-is.
+        return value
+    if value in mapping.values():
+        return f'/{value}'
+    LOGGER.warning(f'Unknown {option_name} value: {value!r}')
+    return None
+
+
+def _viewer_preference_value(value):
+    """Convert a viewer preference value into a pydyf object."""
+    if isinstance(value, bool):
+        return 'true' if value else 'false'
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        if value in ('true', 'false'):
+            return value
+        if value.startswith('/'):
+            return value
+        return pydyf.String(value)
+    return value
+
+
+def add_viewer_preferences(pdf, options):
+    """Add /PageLayout, /PageMode and /ViewerPreferences to the catalog."""
+    page_layout = _pdf_name(
+        options.get('pdf_page_layout'), PAGE_LAYOUTS, 'pdf_page_layout')
+    if page_layout is not None:
+        pdf.catalog['PageLayout'] = page_layout
+
+    page_mode = _pdf_name(
+        options.get('pdf_page_mode'), PAGE_MODES, 'pdf_page_mode')
+    if page_mode is not None:
+        pdf.catalog['PageMode'] = page_mode
+
+    preferences = options.get('pdf_viewer_preferences')
+    if preferences:
+        viewer_preferences = pdf.catalog.get('ViewerPreferences')
+        if viewer_preferences is None:
+            viewer_preferences = pydyf.Dictionary({})
+            pdf.catalog['ViewerPreferences'] = viewer_preferences
+        for key, value in preferences.items():
+            viewer_preferences[key] = _viewer_preference_value(value)
+
+
 def _reference_resources(pdf, resources, images, fonts, color_profiles):
     if 'Font' in resources:
         assert resources['Font'] is None
@@ -357,6 +430,10 @@ def generate_pdf(document, target, zoom, **options):
         intents['Info'] = pydyf.String(color_profile.name)
         intents['DestOutputProfile'] = color_profile.pdf_reference
         pdf.catalog['OutputIntents'] = pydyf.Array([intents])
+
+    # Viewer preferences, page layout and page mode (run after add_tags so
+    # user-provided ViewerPreferences entries merge with the tagging defaults)
+    add_viewer_preferences(pdf, options)
 
     # Apply PDF variants functions
     if variant:
