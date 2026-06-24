@@ -1274,6 +1274,21 @@ class ComputedStyle(dict):
         return value
 
 
+class SeparationProfile:
+    """A Separation (spot) color: a named ink with an alternate color.
+
+    Declared with the ``-weasy-separation`` ``@color-profile`` descriptor and
+    used as a one-component color via ``color(--name <tint>)``.
+    """
+    def __init__(self, ink_name, alternate):
+        self.ink_name = ink_name
+        #: A tinycss2 color (the full-tint appearance, e.g. a device-cmyk()).
+        self.alternate = alternate
+        #: One component: the ink tint.
+        self.components = ('tint',)
+        self.pdf_reference = None
+
+
 class ColorProfile:
     def __init__(self, file_object, src, rendering_intent, components):
         self.src = src
@@ -1803,6 +1818,7 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                 'src': None,
                 'rendering-intent': 'relative-colorimetric',
                 'components': None,
+                '_weasy_separation': None,
             }
             for descriptor_name, descriptor_value in rule_descriptors:
                 if descriptor_name in descriptors:
@@ -1812,6 +1828,12 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                         'Unknown descriptor %r for profile named %r at %d:%d.',
                         descriptor_name, tinycss2.serialize(rule.prelude),
                         rule.source_line, rule.source_column)
+
+            # WeasyPrint extension: a Separation (spot) color profile.
+            if descriptors['_weasy_separation'] is not None:
+                ink_name, alternate = descriptors['_weasy_separation']
+                color_profiles[name] = SeparationProfile(ink_name, alternate)
+                continue
 
             if descriptors['src'] is None:
                 LOGGER.warning(

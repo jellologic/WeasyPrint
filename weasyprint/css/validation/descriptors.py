@@ -363,6 +363,27 @@ def color_profile_src(token, base_url):
         return url[1]
 
 
+@descriptor('color-profile', descriptor_name='-weasy-separation')
+def separation(tokens):
+    """WeasyPrint extension: declare a Separation (spot) ink.
+
+    Syntax: ``-weasy-separation: "<ink name>" <alternate-color>``, e.g.
+    ``-weasy-separation: "PANTONE 871 C" device-cmyk(0% 17% 60% 24%)``. The
+    profile is then used as a one-component spot color via
+    ``color(--name <tint>)``.
+    """
+    from tinycss2.color5 import parse_color
+    non_whitespace = [
+        token for token in tokens
+        if token.type not in ('whitespace', 'comment')]
+    if len(non_whitespace) < 2 or non_whitespace[0].type != 'string':
+        return
+    alternate = parse_color(tinycss2.serialize(non_whitespace[1:]).strip())
+    if alternate is None or alternate == 'currentColor':
+        return
+    return (non_whitespace[0].value, alternate)
+
+
 @descriptor('color-profile')
 @single_keyword
 def rendering_intent(keyword):

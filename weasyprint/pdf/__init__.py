@@ -6,7 +6,7 @@ import pydyf
 from tinycss2.color5 import D50, D65
 
 from .. import VERSION, Attachment
-from ..css import ColorProfile
+from ..css import ColorProfile, SeparationProfile
 from ..html import W3C_DATE_RE
 from ..logger import LOGGER, PROGRESS_LOGGER
 from ..matrix import Matrix
@@ -234,6 +234,36 @@ def _reference_resources(pdf, resources, images, fonts, color_profiles):
     return resources.reference
 
 
+def _separation_color_space(pdf, profile):
+    """Build a PDF Separation color space for a spot ink (SeparationProfile)."""
+    color = profile.alternate
+    if color.space == 'device-cmyk':
+        alternate = '/DeviceCMYK'
+        coordinates = list(color.coordinates)
+    else:
+        alternate = '/DeviceRGB'
+        coordinates = list(color.to('srgb').coordinates)
+    # Tint transform: linear from no ink (tint 0 -> zeros) to full ink (tint 1).
+    function = pydyf.Dictionary({
+        'FunctionType': 2,
+        'Domain': pydyf.Array((0, 1)),
+        'C0': pydyf.Array([0] * len(coordinates)),
+        'C1': pydyf.Array(coordinates),
+        'N': 1,
+    })
+    pdf.add_object(function)
+    # Encode the colorant name as a PDF name (escape non-regular bytes).
+    delimiters = b'()<>[]{}/%#'
+    name = bytearray(b'/')
+    for byte in profile.ink_name.encode():
+        if 0x21 <= byte <= 0x7E and byte not in delimiters:
+            name.append(byte)
+        else:
+            name += b'#%02X' % byte
+    return pydyf.Array((
+        '/Separation', bytes(name), alternate, function.reference))
+
+
 def _use_references(pdf, resources, images, color_profiles):
     # XObjects
     for key, x_object in resources.get('XObject', {}).items():
@@ -331,6 +361,9 @@ def generate_pdf(document, target, zoom, **options):
             (files(__package__) / 'sRGB2014.icc').open('rb'), 'sRGB2014.icc',
             'relative-colorimetric', (['r'], ['g'], ['b']))
     for key, color_profile in document.color_profiles.items():
+        if isinstance(color_profile, SeparationProfile):
+            color_space[key] = _separation_color_space(pdf, color_profile)
+            continue
         profile = pydyf.Stream(
             [color_profile.content],
             pydyf.Dictionary({'N': len(color_profile.components)}),
@@ -551,12 +584,17 @@ def generate_pdf(document, target, zoom, **options):
     # Add output intents
     output_intent = document.output_intent
     color_profile = None
-    if output_intent in document.color_profiles:
-        color_profile = document.color_profiles[document.output_intent]
-    elif 'device-cmyk' in document.color_profiles:
-        color_profile = document.color_profiles['device-cmyk']
-    elif document.color_profiles:
-        color_profile = next(iter(document.color_profiles.values()))
+    # Only ICC color profiles can serve as an output intent (spot/Separation
+    # profiles cannot).
+    icc_profiles = {
+        key: value for key, value in document.color_profiles.items()
+        if isinstance(value, ColorProfile)}
+    if output_intent in icc_profiles:
+        color_profile = icc_profiles[document.output_intent]
+    elif 'device-cmyk' in icc_profiles:
+        color_profile = icc_profiles['device-cmyk']
+    elif icc_profiles:
+        color_profile = next(iter(icc_profiles.values()))
     if color_profile:
         subtype = '/GTS_PDFA1' if variant and 'pdf/a' in variant else '/GTS_PDFX'
         intents = pydyf.Dictionary({'Type': '/OutputIntent', 'S': subtype})
