@@ -95,6 +95,9 @@ INITIAL_VALUES = {
     # Color 3 (REC): https://www.w3.org/TR/css-color-3/
     'opacity': 1,
 
+    # Compositing and Blending (CR): https://www.w3.org/TR/compositing-1/
+    'mix_blend_mode': 'normal',
+
     # Multi-column Layout (WD): https://www.w3.org/TR/css-multicol-1/
     'column_width': 'auto',
     'column_count': 'auto',

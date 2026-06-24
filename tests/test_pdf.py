@@ -29,6 +29,30 @@ def test_page_size_zoom(zoom):
 
 
 @assert_no_logs
+@pytest.mark.parametrize(('css_mode', 'pdf_mode'), [
+    ('multiply', 'Multiply'),
+    ('screen', 'Screen'),
+    ('color-dodge', 'ColorDodge'),
+    ('hard-light', 'HardLight'),
+    ('luminosity', 'Luminosity'),
+])
+def test_mix_blend_mode(css_mode, pdf_mode):
+    pdf = FakeHTML(string=(
+        f'<div style="mix-blend-mode: {css_mode}">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert f'/BM /{pdf_mode}'.encode() in pdf
+
+
+@assert_no_logs
+def test_mix_blend_mode_normal():
+    # The default value must not emit any blend mode ExtGState.
+    pdf = FakeHTML(string=(
+        '<div style="mix-blend-mode: normal">a</div>'
+    )).write_pdf(uncompressed_pdf=True)
+    assert b'/BM /' not in pdf
+
+
+@assert_no_logs
 def test_bookmarks_1():
     pdf = FakeHTML(string='''
       <h1>a</h1>  #

@@ -1129,6 +1129,16 @@ def opacity(token):
 
 
 @property()
+@single_keyword
+def mix_blend_mode(keyword):
+    """Validation for the ``mix-blend-mode`` property."""
+    return keyword in (
+        'normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten',
+        'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference',
+        'exclusion', 'hue', 'saturation', 'color', 'luminosity')
+
+
+@property()
 @single_token
 def z_index(token):
     """Validation for the ``z-index`` property."""

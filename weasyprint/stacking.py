@@ -76,6 +76,7 @@ def _dispatch(box, page, child_contexts, blocks, floats, blocks_and_cells):
         (style['position'] != 'static' and style['z_index'] != 'auto') or
         (box.is_grid_item and style['z_index'] != 'auto') or
         style['opacity'] < 1 or
+        style['mix_blend_mode'] != 'normal' or
         style['transform'] or  # 'transform: none' gives a "falsy" empty list
         style['overflow'] != 'visible')
     if defines_stacking_context:

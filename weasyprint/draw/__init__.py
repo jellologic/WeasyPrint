@@ -34,6 +34,13 @@ def draw_stacking_context(stream, stacking_context):
     with stream.stacked():
         box = stacking_context.box
 
+        # Apply the blend mode for the whole stacking context, see
+        # https://www.w3.org/TR/compositing-1/#mix-blend-mode.
+        blend_mode = box.style['mix_blend_mode']
+        if blend_mode != 'normal':
+            mode = blend_mode.replace('-', ' ').title().replace(' ', '')
+            stream.set_blend_mode(mode)
+
         # Apply the viewport_overflow to the html box, see #35.
         if box.is_for_root_element and (
                 stacking_context.page.style['overflow'] != 'visible'):
