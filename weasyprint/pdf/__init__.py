@@ -56,6 +56,54 @@ def _w3c_date_to_pdf(string, attr_name):
     return f'D:{pdf_date}'
 
 
+# Mapping from CSS numbering styles to PDF /PageLabels /S name tokens.
+PAGE_LABEL_STYLES = {
+    'decimal': '/D',
+    'upper-roman': '/R',
+    'lower-roman': '/r',
+    'upper-alpha': '/A',
+    'lower-alpha': '/a',
+}
+
+
+def add_page_labels(pdf, pages):
+    """Add a /PageLabels number tree to the catalog.
+
+    Each page may set ``-weasy-pdf-page-label`` to a ``(style, prefix, start)``
+    tuple. A new entry is emitted only when the label specification differs
+    from the previous page's (matching the PDF range-based number tree). When
+    no page sets a non-default label, nothing is emitted so output stays
+    byte-identical.
+
+    """
+    nums = pydyf.Array()
+    previous = None
+    has_label = False
+    for index, page in enumerate(pages):
+        label = page.pdf_page_label
+        if label == 'auto':
+            # Default decimal numbering with no prefix, starting at 1.
+            current = ('decimal', '', None)
+        else:
+            has_label = True
+            current = label
+        if current == previous:
+            continue
+        previous = current
+        style, prefix, start = current
+        entry = pydyf.Dictionary({})
+        if style != 'none':
+            entry['S'] = PAGE_LABEL_STYLES[style]
+        if prefix:
+            entry['P'] = pydyf.String(prefix)
+        if start is not None:
+            entry['St'] = start
+        nums.append(index)
+        nums.append(entry)
+    if has_label:
+        pdf.catalog['PageLabels'] = pydyf.Dictionary({'Nums': nums})
+
+
 # Mapping from friendly option values to PDF /PageLayout names.
 PAGE_LAYOUTS = {
     'single-page': 'SinglePage',
@@ -314,6 +362,9 @@ def generate_pdf(document, target, zoom, **options):
             trim_left, trim_top, trim_right, trim_bottom])
         pdf_page['BleedBox'] = pydyf.Array([
             bleed_left, bleed_top, bleed_right, bleed_bottom])
+
+    # Page labels
+    add_page_labels(pdf, document.pages)
 
     # Outlines
     add_outlines(pdf, document.make_bookmark_tree(scale, transform_pages=True))

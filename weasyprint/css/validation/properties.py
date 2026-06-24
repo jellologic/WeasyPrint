@@ -483,6 +483,61 @@ def marks(tokens):
             return ()
 
 
+@property('pdf-page-label', proprietary=True)
+def pdf_page_label(tokens):
+    """``-weasy-pdf-page-label`` property validation.
+
+    Syntax: ``auto | none | <style> || <string> || start(<integer>)`` where
+    ``<style>`` is one of ``decimal``, ``lower-roman``, ``upper-roman``,
+    ``lower-alpha`` or ``upper-alpha``. The value is normalized to either
+    ``'auto'`` or a ``(style, prefix, start)`` tuple.
+
+    """
+    styles = (
+        'decimal', 'lower-roman', 'upper-roman', 'lower-alpha', 'upper-alpha')
+    if len(tokens) == 1 and get_keyword(tokens[0]) == 'auto':
+        return 'auto'
+    style = None
+    prefix = ''
+    start = None
+    seen_prefix = seen_start = seen_style = False
+    for token in tokens:
+        keyword = get_keyword(token)
+        if keyword in styles:
+            if seen_style:
+                return
+            seen_style = True
+            style = keyword
+        elif keyword == 'none':
+            if seen_style:
+                return
+            seen_style = True
+            style = 'none'
+        elif token.type == 'string':
+            if seen_prefix:
+                return
+            seen_prefix = True
+            prefix = token.value
+        elif token.type == 'function' and token.lower_name == 'start':
+            if seen_start:
+                return
+            seen_start = True
+            arguments = remove_whitespace(token.arguments)
+            if len(arguments) != 1:
+                return
+            integer = arguments[0]
+            if integer.type != 'number' or not integer.is_integer:
+                return
+            start = integer.int_value
+        else:
+            return
+    if not (seen_style or seen_prefix or seen_start):
+        return
+    if style is None:
+        style = 'decimal'
+    return (style, prefix, start)
+
+
 @property('outline-style')
 @single_keyword
 def outline_style(keyword):

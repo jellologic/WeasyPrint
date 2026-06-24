@@ -166,6 +166,12 @@ INITIAL_VALUES = {
     'bleed_bottom': 'auto',
     'marks': (),  # computed value for 'none'
 
+    # Proprietary: PDF page labels (number tree in PDF catalog)
+    # Value is either 'auto' or a tuple (style, prefix, start) where style is
+    # one of 'decimal'/'lower-roman'/'upper-roman'/'lower-alpha'/'upper-alpha'/
+    # 'none', prefix is a string (possibly empty) and start is an int or None.
+    'pdf_page_label': 'auto',
+
     # Text 3/4 (WD/WD): https://www.w3.org/TR/css-text-4/
     'hyphenate_character': '‐',  # computed value chosen by the user agent
     'hyphenate_limit_chars': (5, 2, 2),

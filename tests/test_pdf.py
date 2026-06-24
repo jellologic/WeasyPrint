@@ -492,6 +492,65 @@ def test_pdf_page_layout_unknown():
 
 
 @assert_no_logs
+def test_pdf_page_labels_none():
+    # Documents not using the feature must not gain a /PageLabels number tree.
+    pdf = FakeHTML(string='<body>').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' not in pdf
+
+
+@assert_no_logs
+def test_pdf_page_labels_unchanged():
+    # Byte-identical output when the feature is not used.
+    html = '<style>div{page-break-after:always}</style><div>a</div><div>b</div>'
+    a = FakeHTML(string=html).write_pdf()
+    b = FakeHTML(string=html).write_pdf()
+    assert a == b
+    assert b'/PageLabels' not in a
+
+
+@assert_no_logs
+def test_pdf_page_labels_roman():
+    # Roman numerals on the first pages, decimal afterwards.
+    pdf = FakeHTML(string='''
+      <style>
+        @page { size: 100px 100px }
+        @page :first { -weasy-pdf-page-label: lower-roman }
+        div { page-break-after: always }
+      </style>
+      <div>i</div><div>1</div>
+    ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' in pdf
+    # First page uses lower-roman (/r), the rest default decimal (/D).
+    assert re.search(
+        br'/Nums \[0 <</S /r>> 1 <</S /D>>\]', pdf)
+
+
+@assert_no_logs
+def test_pdf_page_labels_prefix_and_start():
+    pdf = FakeHTML(string='''
+      <style>
+        @page { -weasy-pdf-page-label: decimal "A-" start(5) }
+      </style>
+      <body>Hello
+    ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' in pdf
+    assert b'/S /D' in pdf
+    assert b'/P (A-)' in pdf
+    assert b'/St 5' in pdf
+
+
+def test_pdf_page_labels_invalid():
+    with capture_logs() as logs:
+        pdf = FakeHTML(string='''
+          <style>@page { -weasy-pdf-page-label: bogus }</style>
+          <body>Hi
+        ''').write_pdf(uncompressed_pdf=True)
+    assert b'/PageLabels' not in pdf
+    assert len(logs) == 1
+    assert 'pdf-page-label' in logs[0]
+
+
+@assert_no_logs
 def test_links_none():
     pdf = FakeHTML(string='<body>').write_pdf()
     assert b'Annots' not in pdf
