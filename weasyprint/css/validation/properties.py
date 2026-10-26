@@ -1059,7 +1059,15 @@ def display(tokens):
 def float_(keyword):  # XXX do not hide the "float" builtin
     """``float`` property validation."""
     return keyword in (
-        'left', 'right', 'inline-start', 'inline-end', 'footnote', 'none')
+        'left', 'right', 'inline-start', 'inline-end', 'footnote', 'none',
+        'top', 'bottom')
+
+
+@property()
+@single_keyword
+def float_reference(keyword):
+    """``float-reference`` property validation."""
+    return keyword in ('inline', 'column', 'page')
 
 
 @property()

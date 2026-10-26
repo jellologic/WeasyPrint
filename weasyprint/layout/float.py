@@ -78,6 +78,11 @@ def float_layout(context, box, containing_block, absolute_boxes, fixed_boxes,
         assert isinstance(box, boxes.BlockReplacedBox)
         resume_at = None
 
+    if box.style['float'] == 'bottom':
+        # Bottom page floats are positioned at the bottom of the page by
+        # the page layout.
+        resume_at = None
+        return box, resume_at
     box = find_float_position(context, box, containing_block)
 
     context.excluded_shapes.append(box)

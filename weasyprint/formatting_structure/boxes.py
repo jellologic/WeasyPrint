@@ -300,7 +300,8 @@ class Box:
 
     def is_floated(self):
         """Return whether this box is floated."""
-        return self.style['float'] in ('left', 'right', 'inline-start', 'inline-end')
+        return self.style['float'] in (
+            'left', 'right', 'inline-start', 'inline-end', 'top', 'bottom')
 
     def is_footnote(self):
         """Return whether this box is a footnote."""

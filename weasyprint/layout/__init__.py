@@ -212,6 +212,16 @@ def layout_document(html, root_box, context, max_loops=8):
         if footnote_area.children:
             page.children += (footnote_area,)
         page.children += tuple(make_margin_boxes(context, page, state))
+        # Place the bottom page floats collected for this page.
+        bottom_edge = context.page_content_bottoms.get(i + 1)
+        bottom_floats = context.page_bottom_floats.get(i + 1, [])
+        for float_box in bottom_floats:
+            float_box.translate(
+                dy=bottom_edge - float_box.position_y -
+                float_box.margin_height())
+            bottom_edge -= float_box.margin_height()
+        if bottom_floats:
+            page.children += tuple(bottom_floats)
         layout_backgrounds(page, context.get_image_from_uri)
         yield page
 
@@ -245,6 +255,9 @@ class LayoutContext:
         self.broken_out_of_flow = {}
         self.in_column = False
         self.line_grid = None  # (pitch, origin) of the root line grid
+        self.current_page_number = None
+        self.page_bottom_floats = {}
+        self.page_content_bottoms = {}
 
         # Cache
         self.tables = {}

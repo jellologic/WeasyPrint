@@ -4,6 +4,7 @@ from functools import partial
 from math import ceil, inf
 
 from ..formatting_structure import boxes
+from ..logger import LOGGER
 from .absolute import AbsolutePlaceholder, absolute_layout
 from .column import columns_layout
 from .flex import flex_layout
@@ -263,6 +264,38 @@ def _out_of_flow_layout(context, box, index, child, new_children,
         new_child, out_of_flow_resume_at = float_layout(
             context, child, box, absolute_boxes, fixed_boxes, bottom_space,
             skip_stack=None)
+        if (
+                child.style['float'] == 'top' and
+                child.style['float_reference'] in ('page', 'column')):
+            LOGGER.warning(
+                '"float: top" is not supported yet; rendering the box as '
+                f'a regular float in element {child.element_tag}')
+        elif (
+                child.style['float'] == 'bottom' and
+                child.style['float_reference'] in ('page', 'column')):
+            # Page float: the box is placed by the page layout, at the
+            # bottom of this page or at the top of the next one.
+            if new_child.style['float'] == 'bottom' and (
+                    (page_is_empty and not new_children) or
+                    context.page_bottom - child.position_y >=
+                    new_child.margin_height()):
+                # Reserve the space at the bottom of the page.
+                context.page_bottom -= new_child.margin_height()
+                context.page_bottom_floats.setdefault(
+                    context.current_page_number, []).append(new_child)
+            elif new_child.style['float'] == 'bottom':
+                # Not enough room left on this page, put the whole float
+                # on the next page.
+                remove_placeholders(
+                    context, [new_child], absolute_boxes, fixed_boxes)
+                resume_at = {index: None}
+                stop = True
+            else:
+                # Top page floats are rendered at the top of the next page.
+                context.pending_top_floats.append(new_child)
+                resume_at = {index: None}
+                stop = True
+            return stop, resume_at, None, out_of_flow_resume_at
 
         # Check that child doesn’t overflow page.
         page_overflow = context.overflows_page(

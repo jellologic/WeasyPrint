@@ -21,6 +21,7 @@ INITIAL_VALUES = {
     'display': ('inline', 'flow'),
     'empty_cells': 'show',
     'float': 'none',
+    'float_reference': 'inline',
     'left': 'auto',
     'line_height': 'normal',
     'line_grid': 'match-parent',
