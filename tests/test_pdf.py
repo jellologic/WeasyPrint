@@ -1226,3 +1226,30 @@ def test_layer_not_used_byte_identical():
     assert first == second
     assert b'/OCProperties' not in first
     assert b'/OCG' not in first
+
+
+@assert_no_logs
+def test_pdf_forms_gsub_to_unicode():
+    # Regression test for https://github.com/jellologic/WeasyPrint/issues/2:
+    # glyphs shaped through GSUB substitutions (here the "liga" ligature of
+    # the WeasyPrint test font) must keep their ToUnicode mapping when the
+    # font is also used in form fields and therefore embedded in full.
+    document = FakeHTML(string='''
+      <style>
+        body { font-family: weasyprint }
+      </style>
+      liga<input type="text" name="a">
+    ''').render(pdf_forms=True)
+    pdf = document.write_pdf(pdf_forms=True, uncompressed_pdf=True)
+    mappings = [
+        (glyph_id, text)
+        for font in document.fonts.values()
+        for glyph_id, text in font.to_unicode.items()]
+    assert mappings  # glyphs were recorded while drawing
+    # The font’s liga feature shapes "liga" as a single ligature glyph,
+    # giving a many-to-one mapping that cmap alone can’t provide.
+    assert any(len(text) > 1 for _, text in mappings)
+    for glyph_id, text in mappings:
+        unicode_hex = ''.join(
+            letter.encode('utf-16-be').hex() for letter in text)
+        assert f'<{glyph_id:04x}> <{unicode_hex}>'.encode() in pdf
