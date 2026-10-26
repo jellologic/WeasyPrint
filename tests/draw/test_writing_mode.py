@@ -29,3 +29,31 @@ def test_writing_mode_rotation():
         for y in range(vh):
             assert vpixels[y * vw + x] == hpixels[y + (hh - 1 - x) * hw], (
                 x, y)
+
+
+def test_writing_mode_vertical_columns():
+    # Wrapped lines stack as vertical-rl columns: the first text is in
+    # the rightmost column, the rest to its left.
+    w, h, pixels = html_to_pixels('''
+      <style>
+        @page { size: 60px 100px; margin: 0; background: #fff }
+        body { margin: 0; font-family: weasyprint; font-size: 20px;
+               line-height: 20px }
+        .v { writing-mode: vertical-rl; width: 60px; height: 100px }
+        .r { color: red } .b { color: blue }
+      </style>
+      <div class="v"><span class="r">aaaa</span>
+        <span class="b">bbbb cccc dddd</span></div>
+    ''')
+    red_xs, blue_xs = [], []
+    for y in range(h):
+        for x in range(w):
+            r, g, b = pixels[y * w + x][:3]
+            if r > 200 and g < 100 and b < 100:
+                red_xs.append(x)
+            elif b > 200 and r < 100 and g < 100:
+                blue_xs.append(x)
+    assert red_xs
+    assert blue_xs
+    # The first text is in the rightmost column(s), the rest to the left.
+    assert min(red_xs) > max(blue_xs)
