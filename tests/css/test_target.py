@@ -1,5 +1,7 @@
 """Test the CSS cross references using target-*() functions."""
 
+import re
+
 from ..testing_utils import assert_no_logs, render_pages
 
 
@@ -224,3 +226,36 @@ def test_target_absolute_non_root():
     text_box, after = inline.children
     assert text_box.text == 'link'
     assert after.children[0].text == '1'
+
+
+@assert_no_logs
+def test_target_counter_last_and_page_range():
+    # -weasy-target-counter-last gives the page counter of the target’s
+    # last fragment; -weasy-target-page-range collapses equal ends.
+    pages = render_pages('''
+      <style>
+        @page { size: 200px 100px; margin: 10px }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        section { break-before: page }
+        #toc a::after {
+          content: ' ' -weasy-target-page-range(attr(href), '–') }
+        #toc2 a::after {
+          content: ' ' -weasy-target-counter-last(attr(href), page) }
+      </style>
+      <div id="toc">
+        <a href="#short">short</a>
+        <a href="#long">long</a>
+      </div>
+      <div id="toc2"><a href="#long">last</a></div>
+      <section id="short"><p>abc</p></section>
+      <section id="long"><p>def</p><div style="height: 150px"></div></section>
+    ''')
+    # Page 1 has the table of contents, the short section is on page 2
+    # and the long section spans pages 3 and 4.
+    assert len(pages) == 4
+    texts = ' '.join(
+        box.text for box in pages[0].descendants()
+        if type(box).__name__ == 'TextBox')
+    assert re.search(r'short\s+2', texts)
+    assert re.search(r'long\s+3–4', texts)
+    assert re.search(r'last\s+4', texts)

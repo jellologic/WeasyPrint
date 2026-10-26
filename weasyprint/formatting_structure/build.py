@@ -498,6 +498,40 @@ def compute_content_list(content_list, parent_box, counter_values, css_token,
                     counter_style.render_value(counter_value, counter_type)
                     for counter_value in local_counters.get(counter_name, [0]))
             add_text(text)
+        elif type_ in (
+                '-weasy-target-counter-last()', '-weasy-target-page-range()'):
+            if type_ == '-weasy-target-counter-last()':
+                (anchor_token, counter_name), counter_type = (
+                    value[:2], value[-1])
+            else:
+                anchor_token, separator = value
+            anchor_name = targets.anchor_name_from_token(anchor_token)
+            lookup_target = target_collector.lookup_target(
+                anchor_token, parent_box, css_token, parse_again)
+            if lookup_target.state != 'up-to-date':
+                break
+            missing_counters = missing_target_counters.setdefault(
+                anchor_name, ['page'])
+            if 'page' not in missing_counters:
+                missing_counters.append('page')
+            if type_ == '-weasy-target-counter-last()':
+                if counter_type == 'none':
+                    continue
+                counter_value = (
+                    lookup_target.cached_last_page_counter_values.get(
+                        counter_name, [0])[-1])
+                text = counter_style.render_value(counter_value, counter_type)
+            else:
+                first = lookup_target.cached_page_counter_values.get(
+                    'page', [0])[-1]
+                last = lookup_target.cached_last_page_counter_values.get(
+                    'page', [0])[-1]
+                if separator[0] != 'string':
+                    break
+                text = (
+                    str(first) if first == last
+                    else f'{first}{separator[1]}{last}')
+            add_text(text)
         elif type_ == 'target-text()':
             anchor_token, text_style = value
             lookup_target = target_collector.lookup_target(

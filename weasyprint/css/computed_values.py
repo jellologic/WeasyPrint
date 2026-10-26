@@ -623,7 +623,8 @@ def _content_list(style, values):
             # See build.compute_content_list.
             computed_value = value
         elif value[0] in (
-                'target-counter()', 'target-counters()', 'target-text()'):
+                'target-counter()', 'target-counters()', 'target-text()',
+                '-weasy-target-counter-last()', '-weasy-target-page-range()'):
             anchor_token = value[1][0]
             if anchor_token[0] == 'attr()':
                 attr = compute_attr(style, anchor_token)

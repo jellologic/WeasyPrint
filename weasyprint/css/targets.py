@@ -35,6 +35,11 @@ class TargetLookupItem:
         # target_box's page_counters during pagination
         self.cached_page_counter_values = {}
 
+        # target_box's page counters on its last fragment, updated on every
+        # page that contains the anchor (for -weasy-target-counter-last
+        # and -weasy-target-page-range).
+        self.cached_last_page_counter_values = {}
+
 
 class CounterLookupItem:
     """Item controlling page based counters.
@@ -174,10 +179,12 @@ class TargetCollector:
         self.collecting = False
 
     def cache_target_page_counters(self, anchor_name, page_counter_values,
-                                   page_maker_index, page_maker):
+                                   page_maker_index, page_maker, last=False):
         """Store target's current ``page_maker_index`` and page counter values.
 
-        Eventually update associated targeting boxes.
+        Eventually update associated targeting boxes. With ``last`` set,
+        update the last-fragment values instead (the anchor was already
+        seen on an earlier page).
 
         """
         # Only store page counters when paginating
@@ -186,10 +193,18 @@ class TargetCollector:
 
         item = self.target_lookup_items.get(anchor_name)
         if item and item.state == 'up-to-date':
-            item.page_maker_index = page_maker_index
-            if item.cached_page_counter_values != page_counter_values:
-                item.cached_page_counter_values = copy.deepcopy(
+            if last:
+                cache = item.cached_last_page_counter_values
+            else:
+                item.page_maker_index = page_maker_index
+                cache = item.cached_page_counter_values
+                # The last fragment is unknown yet: it is at least the
+                # first one.
+                item.cached_last_page_counter_values = copy.deepcopy(
                     page_counter_values)
+            if cache != page_counter_values:
+                cache.clear()
+                cache.update(page_counter_values)
 
                 # Spread the news: update boxes affected by a change in the
                 # anchor's page counter values.

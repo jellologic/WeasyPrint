@@ -770,6 +770,13 @@ def make_page(context, root_box, page_type, resume_at, page_number,
             # Re-make of affected targeting boxes is inclusive
             target_collector.cache_target_page_counters(
                 anchor, page_counter_values, page_number - 1, page_maker)
+        elif anchor:
+            # Later fragment of an anchored element: refresh the last
+            # page counter values for -weasy-target-counter-last and
+            # -weasy-target-page-range.
+            target_collector.cache_target_page_counters(
+                anchor, page_counter_values, page_number - 1, page_maker,
+                last=True)
 
         # string-set and bookmark-labels don't create boxes, only `content`
         # requires another call to make_page. There is maximum one 'content'

@@ -648,6 +648,12 @@ def get_target(token, base_url):
     elif function.name == 'target-counters':
         if len(arguments) not in (3, 4):
             return
+    elif function.name == '-weasy-target-counter-last':
+        if len(arguments) not in (2, 3):
+            return
+    elif function.name == '-weasy-target-page-range':
+        if len(arguments) != 2:
+            return
     elif function.name == 'target-text':
         if len(arguments) not in (1, 2):
             return
@@ -666,7 +672,16 @@ def get_target(token, base_url):
     else:
         values.append(string_link)
 
-    if function.name.startswith('target-counter'):
+    if function.name == '-weasy-target-page-range':
+        separator = get_string(arguments.pop(0))
+        if separator is None:
+            return
+        values.append(separator)
+        return (f'{function.name}()', tuple(values))
+
+    if (
+            function.name.startswith('target-counter') or
+            function.name == '-weasy-target-counter-last'):
         ident = arguments.pop(0)
         if ident.type != 'ident':
             return
