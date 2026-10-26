@@ -771,14 +771,8 @@ def _clip_radius(token):
     return get_length(token, negative=False, percentage=True)
 
 
-@property()
-@single_token
-def clip_path(token):
-    """Validation for the ``clip-path`` property (basic shapes)."""
-    # See https://www.w3.org/TR/css-shapes-1/ and
-    # https://www.w3.org/TR/css-masking-1/#the-clip-path.
-    if get_keyword(token) == 'none':
-        return 'none'
+def _basic_shape(token):
+    """Parse a ``<basic-shape>`` (shared by clip-path and shape-outside)."""
     function = Function(token)
     if function.name is None:
         return
@@ -869,6 +863,39 @@ def clip_path(token):
         if len(points) < 3:
             return
         return ('polygon', fill_rule, tuple(points))
+    return
+
+
+@property()
+@single_token
+def clip_path(token):
+    """Validation for the ``clip-path`` property (basic shapes)."""
+    # See https://www.w3.org/TR/css-masking-1/#the-clip-path.
+    if get_keyword(token) == 'none':
+        return 'none'
+    return _basic_shape(token)
+
+
+@property()
+@single_token
+def shape_outside(token):
+    """Validation for the ``shape-outside`` property.
+
+    Only basic shapes are supported; URLs and shape-image-threshold are
+    not.
+
+    """
+    # See https://www.w3.org/TR/css-shapes-1/#shape-outside-property.
+    if get_keyword(token) == 'none':
+        return 'none'
+    return _basic_shape(token)
+
+
+@property()
+@single_token
+def shape_margin(token):
+    """Validation for the ``shape-margin`` property."""
+    return get_length(token, negative=False, percentage=True)
 
 
 @property(wants_base_url=True)

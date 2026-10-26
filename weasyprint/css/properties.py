@@ -40,6 +40,8 @@ INITIAL_VALUES = {
     'continued_content': 'none',
     'row_orphans': 1,
     'row_widows': 1,
+    'shape_outside': 'none',
+    'shape_margin': ZERO_PIXELS,
     'float_reference': 'inline',
     'left': 'auto',
     'line_height': 'normal',

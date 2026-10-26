@@ -1,6 +1,6 @@
 """Layout for floating boxes."""
 
-from math import inf
+from math import cos, inf, pi, sin
 
 from ..formatting_structure import boxes
 from .min_max import handle_min_max_width
@@ -85,6 +85,22 @@ def float_layout(context, box, containing_block, absolute_boxes, fixed_boxes,
         return box, resume_at
     box = find_float_position(context, box, containing_block)
 
+    # shape-outside: attach the wrapping polygon to the float, used by
+    # avoid_collisions instead of the border rectangle.
+    shape = box.style['shape_outside']
+    if shape != 'none':
+        points = basic_shape_points(
+            shape, box.border_width(), box.border_height())
+        if points:
+            margin = box.style['shape_margin']
+            if getattr(margin, 'unit', None) == '%':
+                margin = margin.value * containing_block.width / 100
+            elif not isinstance(margin, (int, float)):
+                margin = margin.value
+            if margin:
+                points = expand_polygon(points, margin)
+            box.shape_points = points
+
     context.excluded_shapes.append(box)
     return box, resume_at
 
@@ -119,6 +135,153 @@ def find_float_position(context, box, containing_block):
     box.translate(position_x - box.position_x, position_y - box.position_y)
 
     return box
+
+
+def _shape_length(value, reference):
+    """Resolve one basic-shape length against a reference size."""
+    if getattr(value, 'unit', None) == '%':
+        return value.value / 100 * reference
+    if isinstance(value, (int, float)):
+        return value
+    return value.value
+
+
+def basic_shape_points(shape, width, height):
+    """Return the polygon points of a basic shape in box coordinates.
+
+    ``width`` and ``height`` are the reference box sizes.
+
+    """
+    type_ = shape[0]
+    if type_ == 'polygon':
+        _, _fill_rule, points = shape
+        return [
+            (_shape_length(x, width), _shape_length(y, height))
+            for x, y in points]
+    if type_ == 'inset':
+        _, (top, right, bottom, left) = shape
+        top = _shape_length(top, height)
+        right = _shape_length(right, width)
+        bottom = _shape_length(bottom, height)
+        left = _shape_length(left, width)
+        return [
+            (left, top), (width - right, top),
+            (width - right, height - bottom), (left, height - bottom)]
+    if type_ in ('circle', 'ellipse'):
+        _, radii, (px, py) = shape
+        if type_ == 'circle':
+            # Validation holds a single bare radius for circles.
+            radii = (radii,)
+        center_x = _shape_length(px, width)
+        center_y = _shape_length(py, height)
+
+        def radius(value, reference, closest, farthest):
+            if value == 'closest-side':
+                return closest
+            if value == 'farthest-side':
+                return farthest
+            # Percentages resolve against sqrt(width² + height²) / sqrt(2).
+            diagonal = (width ** 2 + height ** 2) ** 0.5
+            return _shape_length(value, diagonal / 2 ** 0.5)
+
+        if type_ == 'circle':
+            rx = ry = radius(
+                radii[0], width,
+                min(center_x, width - center_x, center_y, height - center_y),
+                max(center_x, width - center_x, center_y, height - center_y))
+        else:
+            rx = radius(
+                radii[0], width,
+                min(center_x, width - center_x),
+                max(center_x, width - center_x))
+            ry = radius(
+                radii[1], height,
+                min(center_y, height - center_y),
+                max(center_y, height - center_y))
+        return [
+            (center_x + rx * cos(2 * pi * i / 32),
+             center_y + ry * sin(2 * pi * i / 32))
+            for i in range(32)]
+    return None
+
+
+def expand_polygon(points, margin):
+    """Offset the polygon edges outward by ``margin``.
+
+    Each new vertex is the intersection of the two offset edges adjacent
+    to the original one (miter offset).
+
+    """
+    count = len(points)
+    # Signed area (positive when the points are clockwise in the y-down
+    # coordinate system).
+    area = sum(
+        points[i][0] * points[(i + 1) % count][1] -
+        points[(i + 1) % count][0] * points[i][1]
+        for i in range(count))
+    flip = -1 if area < 0 else 1
+
+    def offset_edge(a, b):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = (dx ** 2 + dy ** 2) ** 0.5 or 1
+        normal = (flip * dy / length, -flip * dx / length)
+        return (
+            (a[0] + normal[0] * margin, a[1] + normal[1] * margin),
+            (dx / length, dy / length))
+
+    offset_edges = [
+        offset_edge(points[i], points[(i + 1) % count])
+        for i in range(count)]
+    new_points = []
+    for i in range(count):
+        (a1, d1), (a2, d2) = offset_edges[i - 1], offset_edges[i]
+        # Intersect the two offset lines: a1 + t·d1 == a2 + u·d2.
+        denominator = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(denominator) < 1e-10:
+            new_points.append(a2)
+            continue
+        t = ((a2[0] - a1[0]) * d2[1] - (a2[1] - a1[1]) * d2[0]) / denominator
+        new_points.append((a1[0] + t * d1[0], a1[1] + t * d1[1]))
+    return new_points
+
+
+def shape_x_bounds(points, offset_x, offset_y, band_top, band_bottom):
+    """Return the ``(min_x, max_x)`` of a polygon within a y band.
+
+    Points are relative to the box origin, offset by the box position;
+    the band is absolute.
+
+    """
+    band_top -= offset_y
+    band_bottom -= offset_y
+    minimum = maximum = None
+    count = len(points)
+    for i in range(count):
+        x1, y1 = points[i]
+        x2, y2 = points[(i + 1) % count]
+        if y1 == y2:
+            if band_top <= y1 <= band_bottom:
+                candidates = (x1, x2)
+            else:
+                continue
+        else:
+            if y1 > y2:
+                x1, y1, x2, y2 = x2, y2, x1, y1
+            low = max(y1, band_top)
+            high = min(y2, band_bottom)
+            if low > high:
+                continue
+            candidates = (
+                x1 + (x2 - x1) * (low - y1) / (y2 - y1),
+                x1 + (x2 - x1) * (high - y1) / (y2 - y1))
+        for x in candidates:
+            if minimum is None or x < minimum:
+                minimum = x
+            if maximum is None or x > maximum:
+                maximum = x
+    if minimum is None:
+        return None
+    return minimum + offset_x, maximum + offset_x
 
 
 def get_clearance(context, box, direction, collapsed_margin=0):
@@ -185,14 +348,26 @@ def avoid_collisions(context, box, containing_block, outer=True):
                  shape_position_y + shape_margin_height <=
                  position_y + box_height)):
                 colliding_shapes.append(shape)
-        left_bounds = [
-            shape.position_x + shape.margin_width()
-            for shape in colliding_shapes
-            if shape.style['float'] in left_keywords]
-        right_bounds = [
-            shape.position_x
-            for shape in colliding_shapes
-            if shape.style['float'] in right_keywords]
+        left_bounds = []
+        right_bounds = []
+        for shape in colliding_shapes:
+            # shape-outside: use the shape polygon’s extent in the band.
+            points = getattr(shape, 'shape_points', None)
+            if points is not None:
+                bounds = shape_x_bounds(
+                    points, shape.position_x, shape.position_y,
+                    position_y, position_y + box_height)
+                if bounds is None:
+                    continue
+                if shape.style['float'] in left_keywords:
+                    left_bounds.append(bounds[1])
+                elif shape.style['float'] in right_keywords:
+                    right_bounds.append(bounds[0])
+                continue
+            if shape.style['float'] in left_keywords:
+                left_bounds.append(shape.position_x + shape.margin_width())
+            elif shape.style['float'] in right_keywords:
+                right_bounds.append(shape.position_x)
 
         # Set the default maximum bounds
         max_left_bound = containing_block.content_box_x()
