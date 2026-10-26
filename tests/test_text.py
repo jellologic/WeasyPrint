@@ -833,6 +833,57 @@ def test_hyphenate_limit_zone_4():
     assert full_text == 'mmmmmhyphénation'
 
 
+def hyphenated_line_runs(lines):
+    """Return the lengths of the successive runs of hyphenated lines."""
+    runs = []
+    run = 0
+    for line in lines:
+        if line.children[0].text.endswith('‐'):
+            run += 1
+        elif run:
+            runs.append(run)
+            run = 0
+    if run:
+        runs.append(run)
+    return runs
+
+
+@assert_no_logs
+def test_hyphenate_limit_lines_none():
+    # Control: without a limit, this long word is hyphenated on at least
+    # three successive lines.
+    page, = render_pages(
+        '<html style="width: 5em; font-family: weasyprint">'
+        '<body style="hyphens: auto" lang=fr>'
+        'anticonstitutionnellement')
+    html, = page.children
+    body, = html.children
+    lines = body.children
+    assert len(lines) > 3
+    assert max(hyphenated_line_runs(lines), default=0) >= 3
+    full_text = ''.join(line.children[0].text for line in lines)
+    assert full_text.replace('‐', '') == 'anticonstitutionnellement'
+
+
+@assert_no_logs
+@pytest.mark.parametrize('limit', [0, 1, 2, 3])
+def test_hyphenate_limit_lines(limit):
+    # Automatic hyphenation stops after hyphenate-limit-lines successive
+    # hyphenated lines; the next break is a word break (or the word simply
+    # overflows when it can’t break).
+    page, = render_pages(
+        '<html style="width: 5em; font-family: weasyprint">'
+        f'<body style="hyphens: auto; hyphenate-limit-lines: {limit}" lang=fr>'
+        'anticonstitutionnellement')
+    html, = page.children
+    body, = html.children
+    lines = body.children
+    assert len(lines) > 1 or limit == 0
+    assert max(hyphenated_line_runs(lines), default=0) <= limit
+    full_text = ''.join(line.children[0].text for line in lines)
+    assert full_text.replace('‐', '') == 'anticonstitutionnellement'
+
+
 def test_hyphen_nbsp():
     # Regression test for #1817.
     page, = render_pages('''

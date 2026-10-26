@@ -2529,6 +2529,17 @@ def hyphenate_limit_chars(tokens):
         return tuple(result)
 
 
+@property(unstable=True)
+def hyphenate_limit_lines(tokens):
+    """Validation for ``hyphenate-limit-lines``."""
+    if len(tokens) == 1:
+        token, = tokens
+        if get_keyword(token) == 'no-limit':
+            return 'no-limit'
+        elif number := get_number(token, negative=False, integer=True):
+            return number.value
+
+
 @property(proprietary=True)
 @single_token
 def lang(token):

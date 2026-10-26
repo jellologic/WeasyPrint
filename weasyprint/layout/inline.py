@@ -21,6 +21,24 @@ from ..text.line_break import (  # isort:skip
     can_break_text, character_ratio, create_layout, split_first_line, strut)
 
 
+def line_ends_with_hyphen(line):
+    """Return whether a laid-out line box ends with a hyphenation character.
+
+    ``split_text_box`` stores the Pango layout text (which includes the
+    appended hyphenation character when the line was hyphenated) as the last
+    text box text.
+
+    """
+    last_text_box = None
+    for descendant in line.descendants():
+        if isinstance(descendant, boxes.TextBox):
+            last_text_box = descendant
+    return (
+        last_text_box is not None and
+        last_text_box.text.endswith(
+            last_text_box.style['hyphenate_character']))
+
+
 def iter_line_boxes(context, box, position_y, bottom_space, skip_stack,
                     containing_block, absolute_boxes, fixed_boxes,
                     first_letter_style, first_line_style):
@@ -36,16 +54,28 @@ def iter_line_boxes(context, box, position_y, bottom_space, skip_stack,
         resolve_one_percentage(box, 'text_indent', containing_block.width)
     else:
         box.text_indent = 0
+    # Count successive hyphenated lines to honor hyphenate-limit-lines.
+    # Manual soft hyphen breaks are explicit author intent and stay allowed;
+    # only automatic hyphenation is turned off when the limit is reached.
+    hyphenated_lines = 0
     while True:
+        limit = box.style['hyphenate_limit_lines']
+        allow_auto_hyphenation = (
+            limit == 'no-limit' or hyphenated_lines < limit)
         line, resume_at = get_next_linebox(
             context, box, position_y, bottom_space, skip_stack, containing_block,
-            absolute_boxes, fixed_boxes, first_letter_style, first_line_style)
+            absolute_boxes, fixed_boxes, first_letter_style, first_line_style,
+            allow_auto_hyphenation)
         first_line_style = None
         if line:
             handle_leader(context, line, containing_block)
             position_y = line.position_y + line.height
         if line is None:
             return
+        if line_ends_with_hyphen(line):
+            hyphenated_lines += 1
+        else:
+            hyphenated_lines = 0
         yield line, resume_at
         if resume_at is None:
             return
@@ -56,7 +86,8 @@ def iter_line_boxes(context, box, position_y, bottom_space, skip_stack,
 
 def get_next_linebox(context, linebox, position_y, bottom_space, skip_stack,
                      containing_block, absolute_boxes, fixed_boxes,
-                     first_letter_style, first_line_style):
+                     first_letter_style, first_line_style,
+                     allow_auto_hyphenation=True):
     """Return next line from given linebox.
 
     Return ``(line, resume_at)``, where ``line`` is a new linebox copied from the
@@ -106,7 +137,8 @@ def get_next_linebox(context, linebox, position_y, bottom_space, skip_stack,
          last_letter, float_width) = split_inline_box(
              context, linebox, position_x, max_x, bottom_space, skip_stack,
              containing_block, line_absolutes, line_fixed, line_placeholders,
-             waiting_floats, line_children, first_letter_style, first_line_style)
+             waiting_floats, line_children, first_letter_style, first_line_style,
+             allow_auto_hyphenation)
         linebox.width, linebox.height = line.width, line.height
 
         if is_phantom_linebox(line) and not preserved_line_break:
@@ -458,7 +490,8 @@ def inline_block_width(box, context, containing_block):
 def split_inline_level(context, box, position_x, max_x, bottom_space,
                        skip_stack, containing_block, absolute_boxes,
                        fixed_boxes, line_placeholders, waiting_floats,
-                       line_children, first_letter_style, first_line_style):
+                       line_children, first_letter_style, first_line_style,
+                       allow_auto_hyphenation=True):
     """Fit as much content as possible from an inline-level box in a width.
 
     Return ``(new_box, resume_at, preserved_line_break, first_letter, last_letter)``.
@@ -490,7 +523,8 @@ def split_inline_level(context, box, position_x, max_x, bottom_space,
         is_line_start = len(line_children) == 0
         new_box, skip, preserved_line_break = split_text_box(
             context, box, max_x - position_x, skip,
-            is_line_start=is_line_start)
+            is_line_start=is_line_start,
+            allow_auto_hyphenation=allow_auto_hyphenation)
 
         if skip is None:
             resume_at = None
@@ -513,7 +547,8 @@ def split_inline_level(context, box, position_x, max_x, bottom_space,
          last_letter, float_widths) = split_inline_box(
              context, box, position_x, max_x, bottom_space, skip_stack,
              containing_block, absolute_boxes, fixed_boxes, line_placeholders,
-             waiting_floats, line_children, first_letter_style, first_line_style)
+             waiting_floats, line_children, first_letter_style, first_line_style,
+             allow_auto_hyphenation)
     elif isinstance(box, boxes.AtomicInlineLevelBox):
         new_box = atomic_box(
             context, box, position_x, skip_stack, containing_block,
@@ -644,7 +679,8 @@ def _out_of_flow_layout(context, box, containing_block, index, child,
 def _break_waiting_children(context, box, max_x, bottom_space, initial_skip_stack,
                             absolute_boxes, fixed_boxes, line_placeholders,
                             waiting_floats, line_children, children, waiting_children,
-                            first_letter_style, first_line_style):
+                            first_letter_style, first_line_style,
+                            allow_auto_hyphenation=True):
     if waiting_children:
         # Too wide, try to cut inside waiting children, starting from the end.
         # TODO: we should take care of children added into absolute_boxes,
@@ -670,7 +706,8 @@ def _break_waiting_children(context, box, max_x, bottom_space, initial_skip_stac
                     context, original_child, child.position_x, max_x,
                     bottom_space, child_skip_stack, box, absolute_boxes,
                     fixed_boxes, line_placeholders, waiting_floats,
-                    line_children, first_letter_style, first_line_style)
+                    line_children, first_letter_style, first_line_style,
+                    allow_auto_hyphenation)
                 if child_resume_at:
                     break
                 max_x -= 1
@@ -709,7 +746,7 @@ def _adjust_line_height(box):
 def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
                      containing_block, absolute_boxes, fixed_boxes, line_placeholders,
                      waiting_floats, line_children, first_letter_style,
-                     first_line_style):
+                     first_line_style, allow_auto_hyphenation=True):
     """Fit as much content as possible from an inline box in a width.
 
     Return ``(new_box, resume_at, preserved_line_break, first_letter, last_letter)``.
@@ -783,7 +820,8 @@ def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
                 context, child, position_x, available_width, bottom_space,
                 skip_stack, containing_block, absolute_boxes, fixed_boxes,
                 line_placeholders, child_waiting_floats, line_children,
-                first_letter_style, first_line_style))
+                first_letter_style, first_line_style,
+                allow_auto_hyphenation))
         if box.style['direction'] == 'rtl':
             end_spacing = left_spacing
             max_x -= new_float_widths['left']
@@ -799,7 +837,8 @@ def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
                     context, child, position_x, available_width, bottom_space,
                     skip_stack, containing_block, absolute_boxes, fixed_boxes,
                     line_placeholders, child_waiting_floats, line_children,
-                    first_letter_style, first_line_style))
+                    first_letter_style, first_line_style,
+                    allow_auto_hyphenation))
 
         float_widths['left'] = max(float_widths['left'], new_float_widths['left'])
         float_widths['right'] = max(float_widths['right'], new_float_widths['right'])
@@ -851,7 +890,7 @@ def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
                     context, containing_block, max_x, bottom_space, initial_skip_stack,
                     absolute_boxes, fixed_boxes, line_placeholders, waiting_floats,
                     line_children, children, waiting_children, first_letter_style,
-                    first_line_style)
+                    first_line_style, allow_auto_hyphenation)
                 if previous_resume_at:
                     resume_at = previous_resume_at
                     break
@@ -930,7 +969,8 @@ def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
         float_widths)
 
 
-def split_text_box(context, box, available_width, skip, is_line_start=True):
+def split_text_box(context, box, available_width, skip, is_line_start=True,
+                   allow_auto_hyphenation=True):
     """Keep as much text as possible from a TextBox in a limited width.
 
     Try not to overflow but always have some text in ``new_box``.
@@ -949,7 +989,8 @@ def split_text_box(context, box, available_width, skip, is_line_start=True):
         return None, None, False
     layout, length, resume_index, width, height, baseline = split_first_line(
         text.decode(), box.style, context, available_width,
-        box.justification_spacing, is_line_start=is_line_start)
+        box.justification_spacing, is_line_start=is_line_start,
+        allow_auto_hyphenation=allow_auto_hyphenation)
     assert resume_index != 0
 
     if length > 0:

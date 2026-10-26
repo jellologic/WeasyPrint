@@ -198,6 +198,7 @@ INITIAL_VALUES = {
     # Text 3/4 (WD/WD): https://www.w3.org/TR/css-text-4/
     'hyphenate_character': '‐',  # computed value chosen by the user agent
     'hyphenate_limit_chars': (5, 2, 2),
+    'hyphenate_limit_lines': 'no-limit',
     'hyphenate_limit_zone': ZERO_PIXELS,
     'hyphens': 'manual',
     'letter_spacing': 'normal',
@@ -373,6 +374,7 @@ INHERITED = {
     'hyphens',
     'hyphenate_character',
     'hyphenate_limit_chars',
+    'hyphenate_limit_lines',
     'hyphenate_limit_zone',
     'image_rendering',
     'image_resolution',

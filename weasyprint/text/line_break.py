@@ -306,7 +306,8 @@ def split_first_line_cached(text, style, context, max_width, justification_spaci
 
 
 def split_first_line(text, style, context, max_width, justification_spacing,
-                     is_line_start=True, minimum=False):
+                     is_line_start=True, minimum=False,
+                     allow_auto_hyphenation=True):
     """Fit as much as possible in the available width for one line of text.
 
     Return ``(layout, length, resume_index, width, height, baseline)``.
@@ -442,7 +443,7 @@ def split_first_line(text, style, context, max_width, justification_spacing,
     if hyphens != 'none':
         manual_hyphenation = soft_hyphen in first_line_text + second_line_text
 
-    if hyphens == 'auto' and lang:
+    if hyphens == 'auto' and lang and allow_auto_hyphenation:
         # Get text until next line break opportunity.
         next_text = second_line_text
         if (next_break_point := get_next_break_point_from_text(second_line_text, lang)):
