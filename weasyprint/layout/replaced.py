@@ -137,6 +137,10 @@ def replaced_box_width(box, containing_block):
 
     width, height, ratio = box.replacement.get_intrinsic_size(
         box.style['image_resolution'], box.style['font_size'])
+    # aspect-ratio overrides the intrinsic ratio.
+    _ar = box.style['aspect_ratio']
+    if _ar != 'auto' and _ar[1] > 0 and _ar[2] > 0:
+        ratio = _ar[1] / _ar[2]
 
     # This algorithm simply follows the different points of the specification:
     # https://www.w3.org/TR/CSS21/visudet.html#inline-replaced-width
@@ -171,6 +175,10 @@ def replaced_box_height(box):
     # https://www.w3.org/TR/CSS21/visudet.html#inline-replaced-height
     width, height, ratio = box.replacement.get_intrinsic_size(
         box.style['image_resolution'], box.style['font_size'])
+    # aspect-ratio overrides the intrinsic ratio.
+    _ar = box.style['aspect_ratio']
+    if _ar != 'auto' and _ar[1] > 0 and _ar[2] > 0:
+        ratio = _ar[1] / _ar[2]
 
     # Test 'auto' on the computed width, not the used width
     if box.height == box.width == 'auto':
