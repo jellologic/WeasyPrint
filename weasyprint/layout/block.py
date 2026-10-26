@@ -391,6 +391,46 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
     if adjoining_margins:
         position_y += collapse_margin(adjoining_margins)
     new_containing_block = box
+    # text-wrap: balance — narrow the line-breaking width so that the
+    # lines of a short block (single font run, at most 6 lines) equalise,
+    # keeping the same line count as greedy wrapping.
+    if box.style['text_wrap'] == 'balance' and not skip_stack:
+        from ..text.ffi import pango
+        from ..text.line_break import create_layout
+        text_box_children = [
+            c for c in child.descendants() if isinstance(c, boxes.TextBox)]
+        single_run = (
+            text_box_children and not any(
+                isinstance(c, boxes.InlineBox)
+                for c in child.descendants()))
+        if single_run:
+            text = ''.join(c.text for c in text_box_children)
+            full_width = new_containing_block.width
+
+            def line_count(width):
+                layout = create_layout(
+                    text, box.style, context, width, 0)
+                count = 0
+                while pango.pango_layout_get_line_readonly(
+                        layout.layout, count):
+                    count += 1
+                    if count > 12:
+                        break
+                return count
+
+            greedy = line_count(full_width)
+            if 1 < greedy <= 6:
+                lo, hi = 0, full_width
+                for _ in range(8):
+                    mid = (lo + hi) / 2
+                    if line_count(mid) <= greedy:
+                        hi = mid
+                    else:
+                        lo = mid
+                if hi < full_width:
+                    cb_copy = box.copy()
+                    cb_copy.width = hi
+                    new_containing_block = cb_copy
     lines_iterator = iter_line_boxes(
         context, child, position_y, bottom_space, skip_stack, new_containing_block,
         absolute_boxes, fixed_boxes, first_letter_style, first_line_style)

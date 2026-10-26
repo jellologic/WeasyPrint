@@ -1072,6 +1072,13 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('text-wrap')
+@single_keyword
+def text_wrap(keyword):
+    """``text-wrap`` property validation."""
+    return keyword in ('wrap', 'nowrap', 'balance', 'pretty', 'stable')
+
+
 @property('margin-trim')
 @single_keyword
 def margin_trim(keyword):
