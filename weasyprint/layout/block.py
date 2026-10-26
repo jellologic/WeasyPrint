@@ -5,7 +5,6 @@ from math import ceil, inf
 
 from ..css.properties import Dimension
 from ..formatting_structure import boxes
-from ..logger import LOGGER
 from .absolute import AbsolutePlaceholder, absolute_layout
 from .column import columns_layout
 from .flex import flex_layout

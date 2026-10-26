@@ -1,5 +1,4 @@
 """Test ``paint-order`` in SVG images."""
-import re
 
 from ...testing_utils import FakeHTML, assert_no_logs
 

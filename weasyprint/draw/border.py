@@ -71,7 +71,9 @@ def draw_border(stream, box):
                 draw_column_rules(stream, box)
 
         # If there's a border image, that takes precedence.
-        if box.style['border_image_source'][0] != 'none' and box.border_image is not None:
+        if (
+                box.style['border_image_source'][0] != 'none' and
+                box.border_image is not None):
             with stream.artifact():
                 draw_border_image(
                     box, stream, box.border_image, box.style['border_image_slice'],
@@ -111,7 +113,8 @@ def draw_border(stream, box):
                 clip_border_segment(
                     stream, style, width, side, box.rounded_border_box()[:4],
                     widths, box.rounded_border_box()[4:])
-                draw_rounded_border(stream, box, style, styled_color(style, color, side))
+                draw_rounded_border(
+                    stream, box, style, styled_color(style, color, side))
 
 
 def draw_border_image(box, stream, image, border_slice, border_repeat, border_outset,

@@ -6,7 +6,10 @@ from weasyprint.css import InitialStyle
 from weasyprint.formatting_structure.build import capitalize
 from weasyprint.text.ffi import pango
 from weasyprint.text.fonts import (
-    FontConfiguration, get_font_description, get_font_real_style)
+    FontConfiguration,
+    get_font_description,
+    get_font_real_style,
+)
 from weasyprint.text.line_break import split_first_line
 
 from .testing_utils import MONO_FONTS, SANS_FONTS, assert_no_logs, render_pages

@@ -30,7 +30,9 @@ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
         # Draw underline and overline.
         text_decoration_values = textbox.style['text_decoration_line']
         text_decoration_color = get_color(textbox.style, 'text_decoration_color')
-        if 'underline' in text_decoration_values or 'overline' in text_decoration_values:
+        if (
+                'underline' in text_decoration_values or
+                'overline' in text_decoration_values):
             if textbox.style['text_decoration_thickness'] in ('auto', 'from-font'):
                 thickness = textbox.pango_layout.underline_thickness
             else:

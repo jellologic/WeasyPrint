@@ -1,5 +1,4 @@
 """Test extra PDF form field attributes."""
-import re
 
 from .testing_utils import FakeHTML, assert_no_logs
 
