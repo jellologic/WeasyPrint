@@ -150,6 +150,15 @@ def add_forms(forms, matrix, pdf, page, resources, stream, font_map):
                         'Kids': pydyf.Array(),
                         'Opt': pydyf.Array(),
                     })
+                    if 'readonly' in element.attrib:
+                        group['Ff'] += 1
+                    if 'required' in element.attrib:
+                        group['Ff'] += 2
+                    tooltip = (
+                        element.attrib.get('aria-label')
+                        or element.attrib.get('title'))
+                    if tooltip:
+                        group['TU'] = pydyf.String(tooltip)
                     pdf.add_object(group)
                     pdf.catalog['AcroForm']['Fields'].append(group.reference)
                 group = radio_groups[form][input_name]
@@ -190,7 +199,6 @@ def add_forms(forms, matrix, pdf, page, resources, stream, font_map):
             field['AS'] = f'/{key}' if checked else '/Off'
             field['AP'] = pydyf.Dictionary({'N': appearance})
             field['MK'] = pydyf.Dictionary({'CA': pydyf.String(character)})
-            pdf.add_object(field)
             if input_type == 'radio':
                 field['Parent'] = group.reference
                 if checked:
@@ -229,7 +237,6 @@ def add_forms(forms, matrix, pdf, page, resources, stream, font_map):
                 field['V'] = (
                     selected_values[-1] if selected_values
                     else pydyf.String(''))
-            pdf.add_object(field)
 
         elif input_type == 'submit' or element.tag == 'button':
             flags = 1 << (3 - 1)  # HTML form format
@@ -247,7 +254,6 @@ def add_forms(forms, matrix, pdf, page, resources, stream, font_map):
                 'Fields': fields,
                 'Flags': flags,
             })
-            pdf.add_object(field)
 
         else:
             # Text, password, textarea, files, and other unknown fields.
@@ -270,8 +276,45 @@ def add_forms(forms, matrix, pdf, page, resources, stream, font_map):
                 field['Ff'] = 1 << (21 - 1)
             if (max_length := element.get('maxlength', '')).isdigit():
                 field['MaxLen'] = max_length
-            pdf.add_object(field)
+            if input_type == 'date':
+                field['AA'] = pydyf.Dictionary({
+                    key: pydyf.Dictionary({
+                        'S': '/JavaScript',
+                        'JS': pydyf.String(
+                            f'AFDate_{function}Ex("mm/dd/yyyy");'),
+                    })
+                    for key, function in (
+                            ('F', 'Format'), ('K', 'Keystroke'))
+                })
 
+        # Common field attributes: tooltip, readonly, required,
+        # alignment, comb.
+        if input_type != 'radio':
+            readonly = 'readonly' in element.attrib
+            required = 'required' in element.attrib
+            if readonly or required:
+                flags = (1 if readonly else 0) + (2 if required else 0)
+                field['Ff'] = field.get('Ff', 0) + flags
+            tooltip = (
+                element.attrib.get('aria-label')
+                or element.attrib.get('title'))
+            if tooltip:
+                field['TU'] = pydyf.String(tooltip)
+            if input_type not in ('checkbox', 'submit') \
+                    and element.tag != 'button':
+                align = style['text_align_all']
+                if isinstance(align, tuple):
+                    align = align[0]
+                if align == 'right':
+                    field['Q'] = 2
+                elif align == 'center':
+                    field['Q'] = 1
+                if (
+                        style['comb'] == 'true' and
+                        element.tag != 'textarea' and
+                        'MaxLen' in field):
+                    field['Ff'] = field.get('Ff', 0) + (1 << 24)
+        pdf.add_object(field)
         page['Annots'].append(field.reference)
         pdf.catalog['AcroForm']['Fields'].append(field.reference)
         if input_name not in forms:

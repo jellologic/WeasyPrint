@@ -1072,6 +1072,13 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('comb', proprietary=True)
+@single_keyword
+def comb(keyword):
+    """``comb`` property validation."""
+    return keyword in ('none', 'true')
+
+
 @property()
 def filter(tokens):
     """``filter`` property validation."""

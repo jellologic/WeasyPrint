@@ -22,6 +22,7 @@ INITIAL_VALUES = {
     'empty_cells': 'show',
     'float': 'none',
     'filter': 'none',
+    'comb': 'none',
     'break_before_min_space': 'auto',
     'float_reference': 'inline',
     'left': 'auto',
