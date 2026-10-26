@@ -183,3 +183,24 @@ def test_container_query_height_units():
     inside = find_card(page, 'in')
     # 10cqh of the 100px page area height.
     assert inside.style['padding_top'] == (10, 'px')
+
+
+@assert_no_logs
+def test_container_style_query_computed():
+    # Style queries on computed properties: display: flex matches the
+    # flex container, not the block one.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .flex { display: flex; container-type: inline-size }
+        .block { display: block; container-type: inline-size }
+        @container style(display: flex) { .card { border: 2px solid } }
+      </style>
+      <div class="flex"><div class="card" id="ca">a</div></div>
+      <div class="block"><div class="card" id="cb">b</div></div>
+    ''')
+    flex = find_card(page, 'ca')
+    block = find_card(page, 'cb')
+    assert flex.style['border_left_width'] == 2
+    assert block.style['border_left_width'] == 0

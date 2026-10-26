@@ -35,7 +35,7 @@ from .properties import INHERITED, INITIAL_NOT_COMPUTED, INITIAL_VALUES, ZERO_PI
 from .units import ANGLE_UNITS, LENGTH_UNITS, RELATIVE_UNITS, to_pixels, to_radians
 from .validation import preprocess_declarations
 from .validation.descriptors import preprocess_descriptors
-from .validation.properties import validate_non_shorthand
+from .validation.properties import PROPERTIES, validate_non_shorthand
 
 from .tokens import (  # isort:skip
     E, MINUS_INFINITY, NAN, PI, PLUS_INFINITY, InvalidValues, Pending, PercentageInMath,
@@ -128,23 +128,48 @@ class StyleFor:
                 # ancestor container.
                 for name, condition, selectors, declarations in (
                         self._container_rules):
-                    if condition[0] == 'style':
+                    if condition[0] in ('style', 'style-computed'):
                         # Style queries match the nearest ancestor whose
-                        # cascaded declarations carry the custom property.
+                        # cascaded declarations (custom properties) or
+                        # computed style (other properties) match.
                         _, prop, want = condition
-                        ancestor = element.parent
-                        item = None
-                        while ancestor is not None:
-                            container_cascaded = cascaded_styles.get(
-                                (ancestor.etree_element, None), {})
-                            item = container_cascaded.get(prop)
-                            if item is not None:
-                                break
-                            ancestor = ancestor.parent
+                        if prop.startswith('__'):
+                            # Custom property: the nearest ancestor whose
+                            # cascaded declarations carry it.
+                            ancestor = element.parent
+                            item = None
+                            while ancestor is not None:
+                                container_cascaded = cascaded_styles.get(
+                                    (ancestor.etree_element, None), {})
+                                item = container_cascaded.get(prop)
+                                if item is not None:
+                                    break
+                                ancestor = ancestor.parent
+                            else:
+                                continue
+                            if tinycss2.serialize(item[0]).strip() != want:
+                                continue
                         else:
-                            continue
-                        if tinycss2.serialize(item[0]).strip() != want:
-                            continue
+                            # Computed property: the nearest ancestor whose
+                            # computed style matches.
+                            ancestor = element.parent
+                            matched = False
+                            while ancestor is not None:
+                                computed = self._computed_styles.get(
+                                    (ancestor.etree_element, None))
+                                if computed is None:
+                                    break
+                                have = computed.get(prop)
+                                if have == want or (
+                                        have is not None and
+                                        tuple(have) == tuple(want)):
+                                    matched = True
+                                    break
+                                ancestor = ancestor.parent
+                            else:
+                                continue
+                            if not matched:
+                                continue
                     else:
                         if not containers:
                             continue
@@ -2118,15 +2143,29 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                 arguments = [
                     token for token in condition_block.arguments
                     if token.type not in ('whitespace', 'comment')]
-                if (len(arguments) == 3 and arguments[0].type == 'ident' and
-                        arguments[0].lower_value.startswith('--') and
+                if (len(arguments) >= 3 and arguments[0].type == 'ident' and
                         arguments[1].type == 'literal' and
                         arguments[1].value == ':'):
-                    # Cascaded declaration keys use underscores.
-                    prop = arguments[0].lower_value.replace('-', '_')
-                    condition = (
-                        'style', prop,
-                        tinycss2.serialize(arguments[2:]).strip())
+                    value_tokens = [
+                        token for token in arguments[2:]
+                        if token.type != 'whitespace']
+                    if arguments[0].lower_value.startswith('--'):
+                        # Custom property: match the serialized value.
+                        prop = arguments[0].lower_value.replace('-', '_')
+                        condition = (
+                            'style', prop,
+                            tinycss2.serialize(value_tokens).strip())
+                    else:
+                        # Computed property: validate the value now.
+                        prop = arguments[0].lower_value.replace('-', '_')
+                        validator = PROPERTIES.get(prop)
+                        validated = (
+                            validator(value_tokens) if validator else None)
+                        if validated is None:
+                            condition = None
+                        else:
+                            condition = (
+                                'style-computed', prop, validated)
             elif (
                     condition_block is not None and
                     condition_block.type == '() block'):
