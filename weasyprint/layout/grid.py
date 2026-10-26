@@ -1262,8 +1262,16 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
     baseline = None
     next_page = {'break': 'any', 'page': None}
     from .block import block_level_layout
+    row_count = len(rows_positions)
+    column_count = len(columns_positions)
     for i, child in this_page_children:
         x, y, width, height = children_positions[child]
+        if subgrid_rows_sizes is not None and y + height > row_count:
+            # A subgrid has no implicit tracks: items placed beyond the
+            # subgridded rows are laid in the last available row.
+            y = max(0, row_count - height)
+        if subgrid_columns_sizes is not None and x + width > column_count:
+            x = max(0, column_count - width)
         index = children.index(child)
         if skip_stack and skip_stack.get(y):
             if index in skip_stack[y]:

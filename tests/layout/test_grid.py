@@ -2094,3 +2094,34 @@ def test_grid_subgrid_rows():
     assert [
         item(subgrid, f's{i}') for i in (1, 2, 3)] == [
         item(explicit, f's{i}') for i in (1, 2, 3)]
+
+
+@assert_no_logs
+def test_grid_subgrid_row_overflow():
+    # A row subgrid has no implicit tracks: more items than subgridded
+    # rows are laid in the last available row instead of crashing.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 300px; margin: 10px }
+        body { margin: 0 }
+        article { display: grid; grid-template-rows: auto auto;
+                  grid-template-columns: 1fr; gap: 10px 0 }
+        .s { grid-row: 1 / -1; display: grid; gap: 10px 0;
+             grid-template-rows: subgrid }
+        .s div { height: 30px }
+      </style>
+      <article>
+        <div class="s"><div>a</div><div>b</div><div>c</div></div>
+      </article>
+    ''')
+    html, = page.children
+    body, = html.children
+    article, = body.children
+    assert article.height > 0
+    items = [
+        box for box in page.descendants()
+        if getattr(box, 'element', None) is not None and
+        box.element_tag == 'div' and box.element.get('class') is None and
+        type(box).__name__ == 'BlockBox']
+    assert len(items) == 3
+    assert all(box.position_y >= 10 for box in items)
