@@ -82,6 +82,8 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
         resume_at = None
         next_page = {'break': 'any', 'page': None}
         original_page_is_empty = page_is_empty
+        orphans = table.style['row_orphans']
+        widows = table.style['row_widows']
         resolve_percentages(group, containing_block=table)
         group.position_x = rows_left_x
         group.position_y = position_y
@@ -321,6 +323,24 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
             if not page_is_empty and overflow:
                 remove_placeholders(context, row.children, absolute_boxes, fixed_boxes)
                 if new_group_children:
+                    # -weasy-row-widows: leave at least this many rows for
+                    # the next fragment by moving rows there.
+                    widows_keep = len(group.children) - widows
+                    rows_before = len(new_group_children)
+                    if (
+                            rows_before > widows_keep >= orphans and
+                            not avoid_page_break(
+                                group.style['break_inside'], context)):
+                        dropped_rows = new_group_children[widows_keep:]
+                        remove_placeholders(
+                            context, dropped_rows, absolute_boxes, fixed_boxes)
+                        new_group_children = new_group_children[:widows_keep]
+                        last_row = new_group_children[-1]
+                        position_y = (
+                            last_row.position_y + last_row.height +
+                            border_spacing_y)
+                        resume_at = {skip + widows_keep: None}
+                        break
                     previous_row = new_group_children[-1]
                     page_break = block_level_page_break(previous_row, row)
                     if avoid_page_break(page_break, context):
@@ -350,12 +370,14 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
                 break
 
         # Do not keep the row group if we made a page break
-        # before any of its rows or with 'avoid'.
+        # before any of its rows or with 'avoid', or when fewer than
+        # -weasy-row-orphans rows would be left on this page.
         abort = (
             resume_at and
             not original_page_is_empty and (
                 avoid_page_break(group.style['break_inside'], context) or
-                not new_group_children))
+                not new_group_children or
+                len(new_group_children) < orphans))
         if abort:
             remove_placeholders(
                 context, new_group_children, absolute_boxes, fixed_boxes)

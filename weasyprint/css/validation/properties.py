@@ -1109,6 +1109,16 @@ def continued_content(token):
         return token.value
 
 
+@property('row-orphans', proprietary=True)
+@property('row-widows', proprietary=True)
+@single_token
+def row_orphans_widows(token):
+    """``-weasy-row-orphans`` and ``-weasy-row-widows`` validation."""
+    number = get_number(token, integer=True)
+    if number is not None and number.value >= 1:
+        return number.value
+
+
 @property('text-wrap')
 @single_keyword
 def text_wrap(keyword):

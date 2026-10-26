@@ -38,6 +38,8 @@ INITIAL_VALUES = {
     'break_before_min_space': 'auto',
     'keep_with_next': 0,
     'continued_content': 'none',
+    'row_orphans': 1,
+    'row_widows': 1,
     'float_reference': 'inline',
     'left': 'auto',
     'line_height': 'normal',
