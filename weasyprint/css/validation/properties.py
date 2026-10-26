@@ -1101,6 +1101,8 @@ def font_size_adjust(tokens):
         rest = tokens[1:]
     elif len(tokens) != 1:
         return
+    if get_single_keyword(rest) == 'from-font':
+        return (metric, 'from-font')
     if rest[0].type != 'number' or rest[0].value <= 0:
         return
     return (metric, rest[0].value)

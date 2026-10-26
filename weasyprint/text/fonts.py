@@ -370,9 +370,13 @@ def get_font_description(style, with_adjust=True):
     adjust = style['font_size_adjust']
     if adjust != 'none' and with_adjust:
         metric, value = adjust
-        ratio = get_font_metric_ratio(style, metric)
-        if ratio:
-            font_size = int(font_size * value / ratio)
+        # 'from-font' adjusts to the first available font's own ratio: that
+        # font keeps its natural size, and fallback faces served by Pango
+        # inherit this description size, so there is nothing to scale.
+        if value != 'from-font':
+            ratio = get_font_metric_ratio(style, metric)
+            if ratio:
+                font_size = int(font_size * value / ratio)
     pango.pango_font_description_set_absolute_size(font_description, font_size)
     font_variant = PANGO_VARIANT[style['font_variant_caps']]
     pango.pango_font_description_set_variant(font_description, font_variant)
