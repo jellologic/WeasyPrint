@@ -398,9 +398,17 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
             from .block import block_level_layout
             height = 0
             for child in children:
-                x, y, width, _ = children_positions[child]
+                x, y, width, span = children_positions[child]
                 width = sum(orthogonal_sizes[x:x+width])
                 child = child.deepcopy()
+                if (
+                        child.style['grid_template_rows'] and
+                        child.style['grid_template_rows'][0] == 'subgrid'):
+                    # Measure the subgrid child with auto-sized placeholder
+                    # tracks for its span, without the stretch that would
+                    # inflate the items to the provisional rows.
+                    child.subgrid_rows_sizes = [(0, inf)] * (span or 1)
+                    child.style['align_items'] = ('start',)
                 child.position_x = 0
                 child.position_y = 0
                 parent = boxes.BlockContainerBox.anonymous_from(containing_block, ())
