@@ -207,6 +207,7 @@ INITIAL_VALUES = {
     'letter_spacing': 'normal',
     'tab_size': 8,
     'hanging_punctuation': 'none',
+    'initial_letter': 'normal',
     'text_align_all': 'start',
     'text_align_last': 'auto',
     'text_indent': ZERO_PIXELS,

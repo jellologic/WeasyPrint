@@ -381,6 +381,18 @@ def first_letter_to_box(box, skip_stack, first_letter_style):
             letter_style = box.style.copy()
             for key, value in first_letter_style.items():
                 letter_style[key] = value
+            # initial-letter: the letter spans the given number of lines
+            # and, per CSS Inline, behaves like a float. Raised letters
+            # (a sink smaller than the size) are not supported yet.
+            initial_letter = letter_style['initial_letter']
+            if initial_letter != 'normal':
+                lines, _ = initial_letter
+                line_height, _ = strut(letter_style)
+                letter_style['float'] = (
+                    'right' if letter_style['direction'] == 'rtl' else 'left')
+                letter_style['font_size'] = lines * line_height
+                # The floated letter must be as tall as the glyph.
+                letter_style['line_height'] = 'normal'
             if child.element_tag.endswith('::first-letter'):
                 letter_box = boxes.InlineBox(
                     f'{box.element_tag}::first-letter', letter_style,

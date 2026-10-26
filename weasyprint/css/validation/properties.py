@@ -2574,6 +2574,32 @@ def hanging_punctuation(tokens):
         return keywords
 
 
+@property('initial-letter')
+def initial_letter(tokens):
+    """Validation for ``initial-letter``."""
+    if get_single_keyword(tokens) == 'normal':
+        return 'normal'
+    if 1 <= len(tokens) <= 2:
+        values = []
+        for token in tokens:
+            number = get_number(token, integer=True)
+            if number is None:
+                return
+            if not values:
+                if number.value < 1:
+                    return
+            elif not -99 <= number.value <= 99:
+                return
+            values.append(number.value)
+        if len(values) == 1:
+            # The sink defaults to the size.
+            values.append(values[0])
+        elif len(values) == 2 and values[1] > values[0]:
+            # The sink can’t be deeper than the size.
+            values[1] = values[0]
+        return tuple(values)
+
+
 @property(proprietary=True)
 @single_token
 def lang(token):
