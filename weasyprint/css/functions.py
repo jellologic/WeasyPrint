@@ -139,7 +139,7 @@ def check_content(token):
 def check_string_or_element(string_or_element, token):
     function = Function(token)
     arguments = function.split_comma()
-    if function.name == string_or_element and len(arguments) in (1, 2):
+    if function.name == string_or_element and len(arguments) in (1, 2, 3):
         custom_ident = arguments.pop(0)
         if custom_ident.type != 'ident':
             return
@@ -149,12 +149,27 @@ def check_string_or_element(string_or_element, token):
             ident = arguments.pop(0)
             if ident.type != 'ident':
                 return
-            if ident.lower_value not in ('first', 'start', 'last', 'first-except'):
+            if ident.lower_value not in (
+                    'first', 'start', 'last', 'first-except', 'all'):
                 return
             ident = ident.lower_value
         else:
             ident = 'first'
-
+        if ident == 'all':
+            # Non-standard: join the value carried from the previous pages
+            # with every value assigned on the page.
+            if string_or_element != 'string':
+                return
+            if arguments:
+                token = arguments.pop(0)
+                if token.type != 'string':
+                    return
+                separator = token.value
+            else:
+                separator = ' '
+            return ('string()', (custom_ident, 'all', separator))
+        if arguments:
+            return
         return (f'{string_or_element}()', (custom_ident, ident))
 
 

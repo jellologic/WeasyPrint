@@ -306,17 +306,18 @@ class LayoutContext:
         self.broken_out_of_flow[new_box] = (
             box, containing_block, self._excluded_shapes_root_boxes[-1], resume_at)
 
-    def get_string_set_for(self, page, name, keyword='first'):
+    def get_string_set_for(self, page, name, keyword='first', separator=' '):
         """Resolve value of string function."""
         return self.get_string_or_element_for(
-            self.string_set, page, name, keyword)
+            self.string_set, page, name, keyword, separator)
 
     def get_running_element_for(self, page, name, keyword='first'):
         """Resolve value of element function."""
         return self.get_string_or_element_for(
             self.running_elements, page, name, keyword)
 
-    def get_string_or_element_for(self, store, page, name, keyword):
+    def get_string_or_element_for(
+            self, store, page, name, keyword='first', separator=' '):
         """Resolve value of string or element function.
 
         We'll have something like this that represents all assignments on a
@@ -363,6 +364,17 @@ class LayoutContext:
                 return last_string
             elif keyword == 'first-except':
                 return
+            elif keyword == 'all':
+                page_values = list(store[name][self.current_page])
+                start = None
+                for previous_page in range(self.current_page - 1, 0, -1):
+                    if previous_page in store[name]:
+                        start = store[name][previous_page][-1]
+                        break
+                if start and (not page_values or page_values[0] != start):
+                    page_values.insert(0, start)
+                return separator.join(
+                    value for value in page_values if value)
         # Search backwards through previous pages
         for previous_page in range(self.current_page - 1, 0, -1):
             if previous_page in store[name]:
