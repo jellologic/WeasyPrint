@@ -153,6 +153,12 @@ def block_level_width(box, containing_block, with_min_max=True):
         # TODO: what is the real text direction?
         direction = 'ltr'
 
+    # aspect-ratio: derive the width from a definite height.
+    ratio = box.style['aspect_ratio']
+    if ratio != 'auto' and box.width == 'auto' and box.height != 'auto':
+        ratio_width, ratio_height = ratio[1], ratio[2]
+        if ratio_width > 0 and ratio_height > 0:
+            box.width = box.height * ratio_width / ratio_height
     padding_plus_border = (
         box.padding_left + box.padding_right +
         box.border_left_width + box.border_right_width)
@@ -170,6 +176,13 @@ def block_level_width(box, containing_block, with_min_max=True):
             box.width -= box.margin_right
     if with_min_max:
         box.width = max(box.min_width, min(box.max_width, box.width))
+
+    # aspect-ratio: derive the auto height from the resolved width.
+    ratio = box.style['aspect_ratio']
+    if ratio != 'auto' and box.height == 'auto':
+        ratio_width, ratio_height = ratio[1], ratio[2]
+        if ratio_width > 0 and ratio_height > 0 and box.width:
+            box.height = box.width * ratio_height / ratio_width
 
     # Set auto margins to 0 for boxes larger than containing block.
     margin_width = padding_plus_border + box.width

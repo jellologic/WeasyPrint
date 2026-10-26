@@ -1072,6 +1072,34 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('aspect-ratio')
+def aspect_ratio(tokens):
+    """``aspect-ratio`` property validation."""
+    if get_single_keyword(tokens) == 'auto':
+        return 'auto'
+    numbers = []
+    saw_slash = False
+    for token in tokens:
+        if token.type == 'literal' and token.value == '/':
+            if saw_slash:
+                return
+            saw_slash = True
+            continue
+        if token.type == 'number' and token.value >= 0:
+            numbers.append(token.value)
+            continue
+        return
+    if not numbers or len(numbers) > 2:
+        return
+    if saw_slash and len(numbers) != 2:
+        return
+    if len(numbers) == 1:
+        numbers.append(1)
+    if 0 in numbers:
+        return
+    return ('ratio', numbers[0], numbers[1])
+
+
 @property('translate')
 def translate(tokens):
     """``translate`` property validation."""

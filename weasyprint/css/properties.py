@@ -24,6 +24,7 @@ INITIAL_VALUES = {
     'filter': 'none',
     'comb': 'none',
     'translate': 'none',
+    'aspect_ratio': 'auto',
     'rotate': 'none',
     'scale': 'none',
     'place_items': 'normal',
