@@ -1,6 +1,6 @@
 """Test how SVG text is drawn."""
 
-from ...testing_utils import assert_no_logs
+from ...testing_utils import FakeHTML, assert_no_logs
 
 
 @assert_no_logs
@@ -730,3 +730,35 @@ def test_emoji_text_svg(assert_pixels):
         <text>🚀</text>
       </svg>
     ''')
+
+
+def text_paint_order_operators(paint_order):
+    html = f'''
+      <style>@page {{ size: 20px 6px; margin: 0 }}</style>
+      <svg width="20px" height="6px" xmlns="http://www.w3.org/2000/svg">
+        <text x="1" y="5" font-family="weasyprint" font-size="4"
+              fill="black" stroke="blue" stroke-width="1px"
+              paint-order="{paint_order}">
+          ABC
+        </text>
+      </svg>
+    '''
+    pdf = FakeHTML(string=html).write_pdf(uncompressed_pdf=True)
+    return pdf.decode('latin-1')
+
+
+@assert_no_logs
+def test_text_paint_order_halo():
+    # paint-order: stroke draws the text twice, stroke only behind, then
+    # fill on top, so label halos keep the fill color on the glyphs.
+    content = text_paint_order_operators('stroke')
+    assert '\n1 Tr\n' in content
+    assert '\n0 Tr\n' in content
+
+
+@assert_no_logs
+def test_text_paint_order_default():
+    # The default paints fill and stroke together in one operator.
+    content = text_paint_order_operators('normal')
+    assert '\n1 Tr\n' not in content
+    assert '\n2 Tr\n' in content

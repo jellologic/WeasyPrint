@@ -161,13 +161,30 @@ def text(svg, node, font_size):
             node.text_bounding_box, points)
 
         layout.reactivate(style)
-        svg.fill_stroke(node, font_size, text=True)
+        # paint-order: when the stroke comes first, draw the text twice,
+        # stroke only behind, then fill on top, to paint a halo.
+        order = node.get('paint-order', 'fill stroke markers').split()
+        stroke_first = (
+            'stroke' in order and (
+                'fill' not in order or
+                order.index('stroke') < order.index('fill')))
         matrix = Matrix(a=scale_x, d=-1, e=x_position, f=y_position)
         if angle:
             a, c = cos(angle), sin(angle)
             matrix = Matrix(a, -c, c, a) @ matrix
-        emojis = draw_first_line(
-            svg.stream, TextBox(layout, style), 'none', 'none', matrix)
+        text_box = TextBox(layout, style)
+        if stroke_first:
+            svg.fill_stroke(node, font_size, text=True)
+            svg.stream.set_text_rendering(1)
+            draw_first_line(svg.stream, text_box, 'none', 'none', matrix)
+            svg.fill_stroke(node, font_size, text=True)
+            svg.stream.set_text_rendering(0)
+            emojis = draw_first_line(
+                svg.stream, text_box, 'none', 'none', matrix)
+        else:
+            svg.fill_stroke(node, font_size, text=True)
+            emojis = draw_first_line(
+                svg.stream, text_box, 'none', 'none', matrix)
         emoji_lines.append((x, y, emojis))
 
     svg.stream.end_text()
