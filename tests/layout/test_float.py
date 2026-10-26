@@ -838,5 +838,29 @@ def test_first_letter_float():
     line1, = p.children
     first_letter, text = line1.children
     assert first_letter.position_x == 0
-    # TODO: fix problem described in #1859.
-    # assert text.position_x == 20
+    assert text.position_x == 20
+
+
+@assert_no_logs
+def test_first_letter_float_wraps():
+    # Regression test for the floated ::first-letter overlap: the text of
+    # the first line must be laid beside the float, not underneath it.
+    # https://github.com/Kozea/WeasyPrint/issues/1859
+    page, = render_pages('''
+      <style>
+        @page { size: 300px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 20px; line-height: 20px }
+        p { margin: 0 }
+        p::first-letter { float: left; font-size: 60px; line-height: normal }
+      </style>
+      <p>abc def ghi jkl</p>''')
+    html, = page.children
+    body, = html.children
+    p, = body.children
+    line1, line2 = p.children
+    first_letter, text = line1.children
+    assert first_letter.position_x == 0
+    # The text is laid beside the float, not underneath it.
+    assert text.position_x == first_letter.margin_width()
+    # The second line also wraps beside the float.
+    assert line2.position_x == first_letter.margin_width()

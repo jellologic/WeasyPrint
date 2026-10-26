@@ -652,6 +652,14 @@ def _out_of_flow_layout(context, box, containing_block, index, child,
                         waiting_floats, absolute_boxes, fixed_boxes,
                         line_placeholders, float_widths, max_x, position_x,
                         bottom_space):
+    """Lay out an out-of-flow child of an inline box.
+
+    Return the horizontal position for the next in-flow child, as the
+    current position is advanced past floats laid as children of a line
+    box. (For children of nested inline boxes the whole box is shifted at
+    the end of ``split_inline_box`` instead, see ``float_widths``.)
+
+    """
     if child.is_absolutely_positioned():
         child.position_x = position_x
         placeholder = AbsolutePlaceholder(child)
@@ -730,6 +738,8 @@ def _out_of_flow_layout(context, box, containing_block, index, child,
         running_name = child.style['position'][1]
         page = context.current_page
         context.running_elements[running_name][page].append(child)
+
+    return position_x
 
 
 def _break_waiting_children(context, box, max_x, bottom_space, initial_skip_stack,
@@ -857,7 +867,7 @@ def split_inline_box(context, box, position_x, max_x, bottom_space, skip_stack,
         child.position_y = box.position_y
 
         if not child.is_in_normal_flow():
-            _out_of_flow_layout(
+            position_x = _out_of_flow_layout(
                 context, box, containing_block, index, child, children,
                 line_children, waiting_children, waiting_floats,
                 absolute_boxes, fixed_boxes, line_placeholders, float_widths,
