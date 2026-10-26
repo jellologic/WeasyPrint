@@ -488,7 +488,8 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
         else:
             footer = None
 
-        # Don't remove headers and footers if breaks are avoided in line groups
+        # Don't remove headers and footers when the table starts on an empty
+        # page and breaks are avoided in the first line group.
         if skip_stack:
             skip, = skip_stack
         else:
@@ -504,7 +505,8 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
             new_table_children, resume_at, next_page, end_position_y = (
                 body_groups_layout(
                     skip_stack, position_y + header_height,
-                    bottom_space + footer_height, page_is_empty=avoid_breaks))
+                    bottom_space + footer_height,
+                    page_is_empty=page_is_empty and avoid_breaks))
             if new_table_children or not table_rows or not page_is_empty:
                 footer.translate(dy=end_position_y - footer.position_y)
                 end_position_y += footer_height
@@ -520,7 +522,7 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
             new_table_children, resume_at, next_page, end_position_y = (
                 body_groups_layout(
                     skip_stack, position_y + header_height, bottom_space,
-                    page_is_empty=avoid_breaks))
+                    page_is_empty=page_is_empty and avoid_breaks))
             if new_table_children or not table_rows or not page_is_empty:
                 return (
                     header, new_table_children, footer, end_position_y, resume_at,
@@ -534,7 +536,7 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
             new_table_children, resume_at, next_page, end_position_y = (
                 body_groups_layout(
                     skip_stack, position_y, bottom_space + footer_height,
-                    page_is_empty=avoid_breaks))
+                    page_is_empty=page_is_empty and avoid_breaks))
             if new_table_children or not table_rows or not page_is_empty:
                 footer.translate(dy=end_position_y - footer.position_y)
                 end_position_y += footer_height

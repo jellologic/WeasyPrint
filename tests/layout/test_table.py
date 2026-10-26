@@ -3647,3 +3647,45 @@ def test_table_inline_atomic_nowrap():
     table_wrapper, = div.children
     assert div.width == 0
     assert table_wrapper.width == 6
+
+
+@assert_no_logs
+def test_table_break_inside_avoid_first_group():
+    # A row group with "break-inside: avoid" that doesn't fit in the
+    # remaining space must move the whole table (with its header) to the
+    # next page, even when it is the first group of the table.
+    # Regression test for https://github.com/jellologic/WeasyPrint/issues/4
+    def rows(g):
+        return ''.join(
+            f'<tr><td>{g} row {k}</td><td>x</td></tr>' for k in range(3))
+    body = ''.join(
+        f'<tbody><tr><th colspan="2">Group {g}</th></tr>{rows(g)}</tbody>'
+        for g in range(5))
+    for lead in ('2.0in', '2.1in'):
+        pages = render_pages(f'''
+          <style>
+            @page {{ size: 6in 4in; margin: .5in }}
+            body {{ font-family: weasyprint; font-size: 11pt;
+                    line-height: 16pt }}
+            td, th {{ text-align: left }}
+            tbody {{ break-inside: avoid }}
+          </style>
+          <p style="height: {lead}; margin: 0">lead</p>
+          <table>
+            <thead><tr><th colspan="2">Title</th></tr></thead>
+            {body}
+          </table>
+        ''')
+        page_1, page_2 = pages[0], pages[1]
+
+        def text_boxes(box):
+            for child in box.descendants():
+                if type(child).__name__ == 'TextBox':
+                    yield child.text.strip()
+
+        # The table starts on the second page, nothing but the lead stays.
+        assert list(text_boxes(page_1)) == ['lead']
+        page_2_text = list(text_boxes(page_2))
+        assert page_2_text[0] == 'Title'
+        assert 'Group 0' in page_2_text
+        assert all(f'0 row {k}' in page_2_text for k in range(3))
