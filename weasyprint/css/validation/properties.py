@@ -1072,6 +1072,52 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('translate')
+def translate(tokens):
+    """``translate`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    if len(tokens) not in (1, 2):
+        return
+    lengths = []
+    for token in tokens:
+        length = get_length(token, percentage=True)
+        if length is None:
+            return
+        lengths.append(length)
+    if len(lengths) == 1:
+        lengths.append(Dimension(0, 'px'))
+    return tuple(lengths)
+
+
+@property('rotate')
+def rotate(tokens):
+    """``rotate`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    if len(tokens) == 1:
+        angle = get_angle(tokens[0])
+        if angle is not None:
+            return angle
+
+
+@property('scale')
+def scale(tokens):
+    """``scale`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    if len(tokens) not in (1, 2):
+        return
+    numbers = []
+    for token in tokens:
+        if token.type != 'number':
+            return
+        numbers.append(token.value)
+    if len(numbers) == 1:
+        numbers.append(numbers[0])
+    return tuple(numbers)
+
+
 @property('overprint', proprietary=True)
 @single_keyword
 def overprint(keyword):

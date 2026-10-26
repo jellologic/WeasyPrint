@@ -49,7 +49,18 @@ def gather_anchors(box, anchors, links, bookmarks, forms, parent_matrix=None,
         origin_y = box.border_box_y() + offset_y
 
         matrix = Matrix(e=origin_x, f=origin_y)
-        for name, args in box.style['transform']:
+        functions = list(box.style['transform'])
+        functions = list(box.style['transform'])
+        translate = box.style['translate']
+        if translate != 'none':
+            functions.insert(0, ('translate', tuple(translate)))
+        rotate = box.style['rotate']
+        if rotate != 'none':
+            functions.insert(1, ('rotate', rotate))
+        scale = box.style['scale']
+        if scale != 'none':
+            functions.insert(2, ('scale', tuple(scale)))
+        for name, args in functions:
             a, b, c, d, e, f = 1, 0, 0, 1, 0, 0
             if name == 'scale':
                 a, d = args
