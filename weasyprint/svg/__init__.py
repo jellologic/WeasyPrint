@@ -418,9 +418,30 @@ class SVG:
         """Compute size of an arbirtary attribute."""
         return size(length, font_size, self.inner_diagonal)
 
+    def non_scaling_stroke_width(self, width):
+        """Adjust ``width`` for ``vector-effect: non-scaling-stroke``.
+
+        The stroke is drawn in the user space of the outer viewport: the
+        scale accumulated since the outer viewport is divided out of the
+        width.
+        """
+        def x_scale(matrix):
+            values = getattr(matrix, 'values', matrix)
+            try:
+                a, b = values[0][0], values[0][1]
+            except (TypeError, IndexError):
+                a, b = values[0], values[1]
+            return (a * a + b * b) ** 0.5 or 1
+
+        outer = getattr(self, 'outer_ctm', None)
+        if outer is None:
+            return width
+        return width * x_scale(outer) / x_scale(self.stream.ctm)
+
     def draw(self, stream, concrete_width, concrete_height, base_url, context):
         """Draw image on a stream."""
         self.stream = stream
+        self.outer_ctm = stream.ctm
 
         self.tree.set_svg_size(self, concrete_width, concrete_height)
 
@@ -735,6 +756,8 @@ class SVG:
             stream_color.alpha *= stroke_opacity
             self.stream.set_color(stream_color, stroke=True)
         stroke_width = self.length(node.get('stroke-width', '1px'), font_size)
+        if node.get('vector-effect') == 'non-scaling-stroke':
+            stroke_width = self.non_scaling_stroke_width(stroke_width)
         if stroke_width:
             self.stream.set_line_width(stroke_width)
 
@@ -794,6 +817,8 @@ class SVG:
         stroke_drawn = draw_gradient_or_pattern(
             self, node, stroke_source, font_size, stroke_opacity, stroke=True)
         stroke_width = self.length(node.get('stroke-width', '1px'), font_size)
+        if node.get('vector-effect') == 'non-scaling-stroke':
+            stroke_width = self.non_scaling_stroke_width(stroke_width)
         stroke = (stroke_color or stroke_drawn) and stroke_width
 
         # Fill and stroke
