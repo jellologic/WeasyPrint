@@ -6,6 +6,7 @@ from math import inf
 from ..css import AnonymousStyle, Pending, check_math
 from ..css.properties import INHERITED
 from ..formatting_structure import boxes, build
+from ..text.ffi import FROM_UNITS, ffi
 from .absolute import AbsolutePlaceholder, absolute_layout
 from .flex import flex_layout
 from .float import avoid_collisions, float_layout
@@ -19,6 +20,41 @@ from .table import find_in_flow_baseline, table_wrapper_width
 
 from ..text.line_break import (  # isort:skip
     can_break_text, character_ratio, create_layout, split_first_line, strut)
+
+
+# Opening quotes and brackets that may hang at the line start with
+# hanging-punctuation: first.
+FIRST_HANGING_CHARACTERS = (
+    '\'"([{«‹„‚「『【〈『„')
+
+
+def hanging_first_offset(line):
+    """Return how far the line’s first character hangs outward, or 0.
+
+    Implements the ``first`` value of ``hanging-punctuation``: an opening
+    quote or bracket at the line start is pushed into the margin so that
+    the rest of the line aligns optically. Only left-to-right lines are
+    shifted.
+
+    """
+    for descendant in line.descendants():
+        if isinstance(descendant, boxes.TextBox):
+            if descendant.text[:1] in FIRST_HANGING_CHARACTERS:
+                layout = descendant.pango_layout
+                if layout is not None:
+                    try:
+                        first_line, _ = layout.get_first_line()
+                    except AttributeError:
+                        # The layout was deactivated after the split.
+                        layout.reactivate(descendant.style)
+                        first_line, _ = layout.get_first_line()
+                    if first_line.runs[0] != ffi.NULL:
+                        glyph_item = first_line.runs[0].data
+                        if glyph_item.glyphs.num_glyphs:
+                            glyph_info = glyph_item.glyphs.glyphs[0]
+                            return glyph_info.geometry.width * FROM_UNITS
+            return 0
+    return 0
 
 
 def line_ends_with_hyphen(line):
@@ -202,6 +238,14 @@ def get_next_linebox(context, linebox, position_y, bottom_space, skip_stack,
 
     absolute_boxes.extend(line_absolutes)
     fixed_boxes.extend(line_fixed)
+
+    # hanging-punctuation: first — hang the opening quote or bracket at
+    # the line start into the margin.
+    hanging = linebox.style['hanging_punctuation']
+    if isinstance(hanging, (set, frozenset)) and 'first' in hanging:
+        offset = hanging_first_offset(line)
+        if offset:
+            line.translate(-offset, 0)
 
     for placeholder in line_placeholders:
         if 'inline' in placeholder.style.specified['display']:

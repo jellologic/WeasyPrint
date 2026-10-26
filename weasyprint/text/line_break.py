@@ -248,6 +248,44 @@ def _hashable(value):
     return value
 
 
+# Characters that may hang at the end of a line with hanging-punctuation:
+# force-end or allow-end. Opening quotes and brackets hang at the line
+# start with the ``first`` value, see layout/inline.py.
+END_HANGING_CHARACTERS = ',.;:!\'"、。，．：；！'
+
+
+def hanging_end_allowance(style, context):
+    """Return the width that end punctuation may hang into the margin.
+
+    This is the widest advance of the hangable end punctuation for the
+    font that the given style resolves to, cached on the layout context.
+
+    """
+    hanging = style['hanging_punctuation']
+    if not isinstance(hanging, (set, frozenset)):
+        return 0
+    if not hanging & {'force-end', 'allow-end'}:
+        return 0
+    try:
+        cache = context.hanging_widths
+    except AttributeError:
+        cache = context.hanging_widths = {}
+    key = (
+        tuple(style['font_family']), style['font_size'],
+        style['font_weight'], style['font_style'], style['font_stretch'],
+        style['font_variation_settings'])
+    if key in cache:
+        return cache[key]
+    allowance = 0
+    for character in END_HANGING_CHARACTERS:
+        layout = create_layout(character, style, context, None, 0)
+        first_line, _ = layout.get_first_line()
+        width, _ = line_size(first_line, style)
+        allowance = max(allowance, width)
+    cache[key] = allowance
+    return allowance
+
+
 def split_first_line_cached(text, style, context, max_width, justification_spacing,
                             is_line_start=True, minimum=False):
     """Cached variant of :func:`split_first_line` for preferred-width measurement.
@@ -286,6 +324,7 @@ def split_first_line_cached(text, style, context, max_width, justification_spaci
             _hashable(style['font_feature_settings']),
             _hashable(style['font_variation_settings']),
             _hashable(style['hyphenate_limit_chars']),
+            _hashable(style['hanging_punctuation']),
             _hashable(style['line_height']),
             _hashable(style['text_decoration_line']),
         )
@@ -332,6 +371,11 @@ def split_first_line(text, style, context, max_width, justification_spacing,
     original_max_width = max_width
     if not text_wrap:
         max_width = None
+
+    # With hanging-punctuation end values, one trailing hangable character
+    # may overflow the line width.
+    if max_width is not None and max_width != inf:
+        max_width += hanging_end_allowance(style, context)
 
     # Step #1: Get a draft layout with the first line.
     ratio = 4  # number that almost always respects char_height / char_width > ratio

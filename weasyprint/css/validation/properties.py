@@ -2558,6 +2558,22 @@ def hyphenate_limit_lines(tokens):
             return number.value
 
 
+@property(unstable=True)
+def hanging_punctuation(tokens):
+    """Validation for ``hanging-punctuation``."""
+    keywords = {get_keyword(token) for token in tokens}
+    if len(tokens) != len(keywords):
+        return
+    if keywords == {'none'}:
+        return 'none'
+    if (
+            keywords <= {
+                'first', 'force-end', 'allow-end', 'last'} and
+            'none' not in keywords and not (
+                'force-end' in keywords and 'allow-end' in keywords)):
+        return keywords
+
+
 @property(proprietary=True)
 @single_token
 def lang(token):
