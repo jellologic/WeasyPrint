@@ -1086,6 +1086,26 @@ def margin_trim(keyword):
     return keyword in ('none', 'in-flow', 'block', 'inline')
 
 
+@property('font-size-adjust')
+def font_size_adjust(tokens):
+    """``font-size-adjust`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    metric = 'ex-height'
+    rest = tokens
+    if len(tokens) == 2:
+        keyword = get_keyword(tokens[0])
+        if keyword not in ('cap-height', 'ex-height'):
+            return
+        metric = keyword
+        rest = tokens[1:]
+    elif len(tokens) != 1:
+        return
+    if rest[0].type != 'number' or rest[0].value <= 0:
+        return
+    return (metric, rest[0].value)
+
+
 @property('aspect-ratio')
 def aspect_ratio(tokens):
     """``aspect-ratio`` property validation."""

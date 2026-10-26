@@ -325,7 +325,36 @@ def font_features(font_kerning='normal', font_variant_ligatures='normal',
     return features
 
 
-def get_font_description(style):
+def get_font_metric_ratio(style, metric):
+    """Return the given metric (cap-height or ex-height) over em."""
+    cache = getattr(style.font_config, 'metric_ratios', None)
+    if cache is None:
+        style.font_config.metric_ratios = cache = {}
+    key = (
+        tuple(style['font_family']), style['font_weight'],
+        style['font_style'], style['font_stretch'],
+        style['font_variation_settings'], metric)
+    if key in cache:
+        return cache[key]
+    font_description = get_font_description(style, with_adjust=False)
+    font_map = style.font_config.font_map
+    context = pango.pango_font_map_create_context(font_map)
+    font = pango.pango_font_map_load_font(font_map, context, font_description)
+    value = 0
+    hb_face = get_pango_font_hb_face(font)
+    data = get_hb_object_data(hb_face)
+    if data:
+        ttfont = TTFont(BytesIO(data))
+        table = ttfont['OS/2']
+        upem = ttfont['head'].unitsPerEm
+        height = (
+            table.sCapHeight if metric == 'cap-height' else table.sxHeight)
+        value = height / upem if upem else 0
+    cache[key] = value
+    return value
+
+
+def get_font_description(style, with_adjust=True):
     """Get font description string out of given style."""
     font_description = ffi.gc(
         pango.pango_font_description_new(), pango.pango_font_description_free)
@@ -338,6 +367,12 @@ def get_font_description(style):
     font_weight = style['font_weight']
     pango.pango_font_description_set_weight(font_description, font_weight)
     font_size = int(style['font_size'] * TO_UNITS)
+    adjust = style['font_size_adjust']
+    if adjust != 'none' and with_adjust:
+        metric, value = adjust
+        ratio = get_font_metric_ratio(style, metric)
+        if ratio:
+            font_size = int(font_size * value / ratio)
     pango.pango_font_description_set_absolute_size(font_description, font_size)
     font_variant = PANGO_VARIANT[style['font_variant_caps']]
     pango.pango_font_description_set_variant(font_description, font_variant)
