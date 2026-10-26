@@ -404,7 +404,9 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
             getattr(height_value, 'unit', None) not in (None, '%')):
         # Vertical writing: the children’s inline axis is the box’s
         # definite height. Lay them in a swapped containing block; the
-        # box is drawn rotated (see draw_block_level).
+        # box is drawn rotated (see draw_block_level). Percentage
+        # heights follow the standard rules (auto with an indefinite
+        # containing height) and fall back to horizontal.
         swap = box.copy()
         swap.width, swap.height = height_value.value, box.width
         new_containing_block = swap
