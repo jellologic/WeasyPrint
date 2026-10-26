@@ -2125,3 +2125,34 @@ def test_grid_subgrid_row_overflow():
         type(box).__name__ == 'BlockBox']
     assert len(items) == 3
     assert all(box.position_y >= 10 for box in items)
+
+
+@assert_no_logs
+def test_grid_subgrid_named_lines():
+    # Subgrid line names resolve for the child's items: [cs cm ce] names
+    # three consecutive lines of the parent grid.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0 }
+        article { display: grid; grid-template-columns: repeat(4, 1fr);
+                  gap: 0 15px }
+        .s { grid-column: 1 / -1; display: grid; gap: 0;
+             grid-template-columns: subgrid [cs cm ce] }
+        .a { grid-column: cs / cm }
+        .b { grid-column: cm / ce }
+      </style>
+      <article><div class="s">
+        <div class="a">a</div><div class="b">b</div>
+      </div></article>
+    ''')
+    html, = page.children
+    body, = html.children
+    article, = body.children
+    nested, = article.children
+    a_box, b_box = nested.children
+    track = (400 - 3 * 15) / 4
+    assert a_box.position_x == 0
+    assert a_box.width == track
+    assert b_box.position_x == track + 15
+    assert b_box.width == track

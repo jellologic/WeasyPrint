@@ -577,6 +577,42 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
     return tracks_sizes
 
 
+def _expand_subgrid_line_names(subgrid_tokens, count):
+    """Expand declared subgrid line names to ``count + 1`` lines.
+
+    The subgrid's declared line names attach to its lines (which are the
+    parent grid's tracks).
+
+    """
+    lines = [[] for _ in range(count + 1)]
+    index = 0
+    for entry in subgrid_tokens:
+        if index > count:
+            break
+        if isinstance(entry, tuple) and entry and entry[0] == 'repeat()':
+            _, number, track_list = entry
+            if not isinstance(number, int):
+                # TODO: Respect auto-fill and auto-fill.
+                number = 1
+            names_list = [names for names in track_list[::2]]
+            for _ in range(number):
+                for names in names_list:
+                    if index <= count:
+                        lines[index].extend(names)
+                    index += 1
+        elif isinstance(entry, tuple):
+            # A line-name list distributes its names over consecutive
+            # lines.
+            for name in entry:
+                if index > count:
+                    break
+                lines[index].append(name)
+                index += 1
+            if not entry:
+                index += 1
+    return lines
+
+
 def grid_layout(context, box, bottom_space, skip_stack, containing_block,
                 page_is_empty, absolute_boxes, fixed_boxes):
     context.create_block_formatting_context(box)
@@ -616,14 +652,28 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
     # item layout loop of the parent.
     subgrid_columns_sizes = getattr(box, 'subgrid_columns_sizes', None)
     subgrid_rows_sizes = getattr(box, 'subgrid_rows_sizes', None)
-    rows = _get_template_tracks(box.style['grid_template_rows'])
+    declared_row_template = box.style['grid_template_rows']
+    declared_column_template = box.style['grid_template_columns']
+    rows = _get_template_tracks(declared_row_template)
     if subgrid_columns_sizes is not None:
-        columns = [[] for _ in range(2 * len(subgrid_columns_sizes) + 1)]
+        track_count = len(subgrid_columns_sizes)
+        columns = [[] for _ in range(2 * track_count + 1)]
+        if (isinstance(declared_column_template, tuple) and
+                declared_column_template[0] == 'subgrid'):
+            expanded = _expand_subgrid_line_names(
+                declared_column_template[1], track_count)
+            columns[::2] = expanded
         column_gap = getattr(box, 'subgrid_column_gap', column_gap)
     else:
-        columns = _get_template_tracks(box.style['grid_template_columns'])
+        columns = _get_template_tracks(declared_column_template)
     if subgrid_rows_sizes is not None:
-        rows = [[] for _ in range(2 * len(subgrid_rows_sizes) + 1)]
+        track_count = len(subgrid_rows_sizes)
+        rows = [[] for _ in range(2 * track_count + 1)]
+        if (isinstance(declared_row_template, tuple) and
+                declared_row_template[0] == 'subgrid'):
+            expanded = _expand_subgrid_line_names(
+                declared_row_template[1], track_count)
+            rows[::2] = expanded
         row_gap = getattr(box, 'subgrid_row_gap', row_gap)
 
     # Adjust rows number
