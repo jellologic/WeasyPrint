@@ -1293,6 +1293,18 @@ def line_snap(keyword):
     return keyword in ('none', 'baseline', 'contain')
 
 
+@property(unstable=True)
+def box_snap(tokens):
+    """Validation for the ``box-snap`` property."""
+    keywords = {get_keyword(token) for token in tokens}
+    if len(tokens) != len(keywords):
+        return
+    if keywords == {'none'}:
+        return 'none'
+    if keywords <= {'block-start', 'block-end'} and keywords:
+        return keywords
+
+
 @property()
 @comma_separated_list
 def font_family(tokens):

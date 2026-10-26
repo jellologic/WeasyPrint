@@ -42,6 +42,7 @@ INITIAL_VALUES = {
     'line_height': 'normal',
     'line_grid': 'match-parent',
     'line_snap': 'none',
+    'box_snap': 'none',
     'margin_top': ZERO_PIXELS,
     'margin_right': ZERO_PIXELS,
     'margin_bottom': ZERO_PIXELS,

@@ -1009,6 +1009,27 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
             pending_keep_with_next = (
                 child.style['keep_with_next'] if resume_at is None else 0)
 
+            # box-snap: snap the child’s block edges to the root line grid.
+            if (
+                    context.line_grid is not None and
+                    resume_at is None and new_children):
+                child_box = new_children[-1]
+                snap = child_box.style['box_snap']
+                if isinstance(snap, (set, frozenset)) and child_box.is_in_normal_flow():
+                    pitch, origin = context.line_grid
+                    if 'block-start' in snap:
+                        edge_y = child_box.position_y
+                    elif 'block-end' in snap:
+                        edge_y = child_box.position_y + child_box.border_height()
+                    else:
+                        edge_y = None
+                    if edge_y is not None:
+                        steps = max(0, ceil((edge_y - origin) / pitch - 1e-6))
+                        delta = origin + steps * pitch - edge_y
+                        if delta:
+                            child_box.translate(dy=delta)
+                            position_y += delta
+
             # Handle max-lines.
             if None not in (new_max_lines, max_lines):
                 max_lines = new_max_lines
