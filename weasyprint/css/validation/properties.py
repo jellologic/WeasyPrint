@@ -1099,6 +1099,16 @@ def keep_with_next(token):
         return number.value
 
 
+@property('continued-content', proprietary=True)
+@single_token
+def continued_content(token):
+    """``-weasy-continued-content`` property validation."""
+    if get_keyword(token) == 'none':
+        return 'none'
+    if token.type == 'string':
+        return token.value
+
+
 @property('text-wrap')
 @single_keyword
 def text_wrap(keyword):

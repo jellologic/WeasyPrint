@@ -940,7 +940,26 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
             last = in_flow_children[-1]
             first.style['margin_top'] = Dimension(0, 'px')
             last.style['margin_bottom'] = Dimension(0, 'px')
-    for index, child in enumerate(box.children[skip:], start=(skip or 0)):
+    # -weasy-continued-content: prepend a marker line to continuation
+    # fragments. Loop indexes are shifted by one for the original children,
+    # resume points are shifted back before they leave this function.
+    continued_marker = None
+    children = box.children[skip:]
+    if (
+            not is_start and
+            box.style['continued_content'] not in (None, 'none') and
+            children):
+        continued_marker = boxes.LineBox(
+            f'{box.element_tag}::-weasy-continued', box.style, box.element,
+            [boxes.TextBox(
+                f'{box.element_tag}::-weasy-continued', box.style,
+                box.element, box.style['continued_content'])])
+        children = [continued_marker, *children]
+        # The pending resume belongs to the first original child, not to
+        # the marker.
+        continued_skip_stack = skip_stack
+        skip_stack = None
+    for index, child in enumerate(children, start=(skip or 0)):
         child.position_x = position_x
         child.position_y = position_y  # doesn’t count adjoining_margins
         new_footnotes = []
@@ -965,15 +984,22 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
 
         elif isinstance(child, boxes.LineBox):
             # Layout line child.
+            marker_child = child is continued_marker
             (abort, stop, resume_at, position_y,
              new_footnotes, max_lines) = _linebox_layout(
                 context, box, index, child, new_children, page_is_empty,
                 absolute_boxes, fixed_boxes, adjoining_margins, bottom_space,
-                position_y, skip_stack, first_letter_style, first_line_style,
+                position_y, skip_stack,
+                None if marker_child else first_letter_style,
+                None if marker_child else first_line_style,
                 draw_bottom_decoration, max_lines)
+            if marker_child:
+                # Hand the pending resume over to the first original child.
+                skip_stack = continued_skip_stack
             draw_bottom_decoration |= resume_at is None
             adjoining_margins = []
-            first_letter_style = first_line_style = None
+            if not marker_child:
+                first_letter_style = first_line_style = None
 
         else:
             # Layout in-flow child.
@@ -1076,6 +1102,11 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
 
     else:
         resume_at = None
+
+    if continued_marker is not None and resume_at is not None:
+        # Resume points are indexes in the original children list.
+        (index, sub_resume), = resume_at.items()
+        resume_at = {index - 1: sub_resume}
 
     box_is_fragmented = resume_at is not None or box.force_fragmentation
     if box.style['continue'] == 'discard':
