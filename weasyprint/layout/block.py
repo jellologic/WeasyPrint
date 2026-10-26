@@ -607,6 +607,38 @@ def _in_flow_layout(context, box, index, child, new_children, page_is_empty,
          absolute_boxes, fixed_boxes, adjoining_margins, first_letter_style,
          first_line_style, discard, max_lines)
 
+    # Non-standard: move the child to the next page when it is split and
+    # started too close to the bottom of the page.
+    min_space = child.style['break_before_min_space']
+    if (
+            resume_at is not None and
+            min_space != 'auto' and
+            not page_is_empty_with_no_children and
+            not box.is_monolithic()):
+        threshold = min_space
+        if isinstance(threshold, tuple) and threshold[0] == 'percentage':
+            threshold = context.page_content_height * threshold[1] / 100
+        elif getattr(threshold, 'unit', None) == '%':
+            threshold = (
+                context.page_content_height * threshold.value / 100)
+        elif hasattr(threshold, 'value'):
+            threshold = threshold.value
+        remaining = context.page_bottom - child_position[1]
+        try:
+            split_too_late = remaining < threshold
+        except TypeError:
+            # Unsupported math function: ignore the property.
+            split_too_late = False
+        if split_too_late:
+            remove_placeholders(
+                context, [new_child], absolute_boxes, fixed_boxes)
+            child.position_x, child.position_y = child_position
+            resume_at = {index: None}
+            stop = True
+            return (
+                abort, stop, resume_at, position_y, adjoining_margins,
+                next_page, new_children, max_lines)
+
     # Check that child doesn’t overflow and set next position_y.
     if new_child is not None:
         if not collapsing_through:

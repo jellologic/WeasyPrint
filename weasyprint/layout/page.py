@@ -603,6 +603,7 @@ def make_page(context, root_box, page_type, resume_at, page_number,
     context.current_page_number = page_number
     context.page_bottom_floats[page_number] = []
     context.page_bottom = page.content_box_y() + page.height
+    context.page_content_height = page.height
     context.page_content_bottoms[page_number] = context.page_bottom
     if root_box.style['line_grid'] == 'create':
         # The root element establishes the line grid used on the whole page.

@@ -688,6 +688,14 @@ def display(style, name, value):
     return value
 
 
+@register_computer('break_before_min_space')
+def weasy_break_before_min_space(style, name, value):
+    """Compute the ``-weasy-break-before-min-space`` property."""
+    if value == 'auto':
+        return value
+    return length(style, name, value)
+
+
 @register_computer('float')
 def compute_float(style, name, value):
     """Compute the ``float`` property."""

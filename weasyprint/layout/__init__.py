@@ -248,6 +248,7 @@ class LayoutContext:
         self.reported_footnotes = []
         self.current_footnote_area = None  # Not initialized yet
         self.page_bottom = None
+        self.page_content_height = None
         self.string_set = defaultdict(lambda: defaultdict(list))
         self.running_elements = defaultdict(lambda: defaultdict(list))
         self.current_page = None

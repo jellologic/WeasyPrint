@@ -1063,6 +1063,15 @@ def float_(keyword):  # XXX do not hide the "float" builtin
         'top', 'bottom')
 
 
+@property('break-before-min-space', proprietary=True)
+@single_token
+def weasy_break_before_min_space(token):
+    """``-weasy-break-before-min-space`` property validation."""
+    if get_keyword(token) == 'auto':
+        return 'auto'
+    return get_length(token, percentage=True)
+
+
 @property()
 @single_keyword
 def float_reference(keyword):
