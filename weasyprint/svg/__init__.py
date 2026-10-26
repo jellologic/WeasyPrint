@@ -834,7 +834,16 @@ class SVG:
                 text_rendering = 3
             self.stream.set_text_rendering(text_rendering)
         else:
-            if fill and stroke:
+            order = node.get('paint-order', 'fill stroke markers').split()
+            stroke_first = (
+                'stroke' in order and (
+                    'fill' not in order or
+                    order.index('stroke') < order.index('fill')))
+            if fill and stroke and stroke_first:
+                # paint-order: stroke the path, then fill it on top.
+                self.stream.stroke()
+                self.stream.fill(even_odd)
+            elif fill and stroke:
                 self.stream.fill_and_stroke(even_odd)
             elif stroke:
                 self.stream.stroke()
