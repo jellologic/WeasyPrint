@@ -612,15 +612,19 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
         grid_areas = ((None,),)
     grid_areas = [list(row) for row in grid_areas]
 
-    # Subgrid: the columns are the parent grid’s tracks, passed by the
+    # Subgrid: the tracks are the parent grid’s tracks, passed by the
     # item layout loop of the parent.
     subgrid_columns_sizes = getattr(box, 'subgrid_columns_sizes', None)
+    subgrid_rows_sizes = getattr(box, 'subgrid_rows_sizes', None)
     rows = _get_template_tracks(box.style['grid_template_rows'])
     if subgrid_columns_sizes is not None:
         columns = [[] for _ in range(2 * len(subgrid_columns_sizes) + 1)]
         column_gap = getattr(box, 'subgrid_column_gap', column_gap)
     else:
         columns = _get_template_tracks(box.style['grid_template_columns'])
+    if subgrid_rows_sizes is not None:
+        rows = [[] for _ in range(2 * len(subgrid_rows_sizes) + 1)]
+        row_gap = getattr(box, 'subgrid_row_gap', row_gap)
 
     # Adjust rows number
     grid_areas_columns = len(grid_areas[0]) if grid_areas else 0
@@ -1027,7 +1031,9 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
     # 3. Run the grid sizing algorithm.
 
     # 3.0 List min/max sizing functions.
-    row_sizing_functions = [_get_sizing_functions(row) for row in rows[1::2]]
+    row_sizing_functions = (
+        [] if subgrid_rows_sizes is not None
+        else [_get_sizing_functions(row) for row in rows[1::2]])
 
     # 3.1 Resolve the sizes of the grid columns.
     if subgrid_columns_sizes is not None:
@@ -1042,9 +1048,13 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
 
     # 3.2 Resolve the sizes of the grid rows.
     vertical_sizes = [size for size, _ in columns_sizes]
-    rows_sizes = _resolve_tracks_sizes(
-        row_sizing_functions, box.height, children_positions, implicit_y1, 'y',
-        row_gap, context, box, vertical_sizes)
+    if subgrid_rows_sizes is not None:
+        # The subgrid tracks are the parent grid’s already resolved tracks.
+        rows_sizes = list(subgrid_rows_sizes)
+    else:
+        rows_sizes = _resolve_tracks_sizes(
+            row_sizing_functions, box.height, children_positions, implicit_y1,
+            'y', row_gap, context, box, vertical_sizes)
 
     # 3.3 Re-resolve the sizes of the grid columns with min-/max-content.
     # TODO: Re-resolve.
@@ -1267,13 +1277,20 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
         child.position_x = columns_positions[x]
         child.position_y = rows_positions[y] - skip_height
         resolve_percentages(child, box)
-        if (
-                isinstance(child, boxes.GridContainerBox) and
-                child.style['grid_template_columns'] and
-                child.style['grid_template_columns'][0] == 'subgrid'):
+        if isinstance(child, boxes.GridContainerBox) and (
+                (child.style['grid_template_columns'] and
+                 child.style['grid_template_columns'][0] == 'subgrid') or
+                (child.style['grid_template_rows'] and
+                 child.style['grid_template_rows'][0] == 'subgrid')):
             # The subgrid child uses the parent’s spanned tracks.
-            child.subgrid_columns_sizes = columns_sizes[x:x + width]
-            child.subgrid_column_gap = column_gap
+            if (child.style['grid_template_columns'] and
+                    child.style['grid_template_columns'][0] == 'subgrid'):
+                child.subgrid_columns_sizes = columns_sizes[x:x + width]
+                child.subgrid_column_gap = column_gap
+            if (child.style['grid_template_rows'] and
+                    child.style['grid_template_rows'][0] == 'subgrid'):
+                child.subgrid_rows_sizes = rows_sizes[y:y + height]
+                child.subgrid_row_gap = row_gap
         width = (
             sum(size for size, _ in columns_sizes[x:x+width]) +
             (width - 1) * column_gap)

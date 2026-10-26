@@ -2044,3 +2044,53 @@ def test_grid_subgrid_partial_span():
             '2 / 4', 'grid-template-columns: repeat(2, 1fr); gap: 0 15px'))
     # Four items in two tracks: two rows of two, like the explicit grid.
     assert grid_items(subgrid) == grid_items(explicit)
+
+
+@assert_no_logs
+def test_grid_subgrid_rows():
+    # A row subgrid places its items in the parent grid’s spanned rows,
+    # like an explicit repeat of the same rows.
+    subgrid, = render_pages('''
+      <style>
+        @page { size: 400px 300px; margin: 10px }
+        body { margin: 0 }
+        article { display: grid; grid-template-columns: repeat(2, 1fr);
+                  grid-template-rows: repeat(3, 25px); gap: 15px 0 }
+        .s { grid-row: 1 / -1; display: grid; gap: 15px 0;
+             grid-template-rows: subgrid }
+      </style>
+      <article>
+        <div class="s">
+          <div id="s1">a</div><div id="s2">b</div><div id="s3">c</div>
+        </div>
+        <div class="o1">x</div><div class="o2">y</div><div class="o3">z</div>
+      </article>
+    ''')
+    explicit, = render_pages('''
+      <style>
+        @page { size: 400px 300px; margin: 10px }
+        body { margin: 0 }
+        article { display: grid; grid-template-columns: repeat(2, 1fr);
+                  grid-template-rows: repeat(3, 25px); gap: 15px 0 }
+        .s { grid-row: 1 / -1; display: grid; gap: 15px 0;
+             grid-template-rows: repeat(3, 25px) }
+      </style>
+      <article>
+        <div class="s">
+          <div id="s1">a</div><div id="s2">b</div><div id="s3">c</div>
+        </div>
+        <div class="o1">x</div><div class="o2">y</div><div class="o3">z</div>
+      </article>
+    ''')
+
+    def item(page, item_id):
+        for box in page.descendants():
+            element = getattr(box, 'element', None)
+            if element is not None and element.get('id') == item_id:
+                return (round(box.position_y, 1), round(box.height, 1))
+
+    assert [item(subgrid, f's{i}') for i in (1, 2, 3)] == [
+        (10.0, 25.0), (50.0, 25.0), (90.0, 25.0)]
+    assert [
+        item(subgrid, f's{i}') for i in (1, 2, 3)] == [
+        item(explicit, f's{i}') for i in (1, 2, 3)]
