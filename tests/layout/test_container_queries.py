@@ -121,3 +121,26 @@ def test_container_query_range_syntax():
     # The open band excludes both slots (200 >= 150 and 100 <= 100).
     assert find_card(page, 'cc').style['border_left_width'] == 0
     assert find_card(page, 'dc').style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_units():
+    # cqw resolves against the nearest container's inline size; elements
+    # with no container ancestor resolve to 0.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .half { width: 50%; container-type: inline-size }
+        .pad { padding-left: 10cqw }
+        .out { padding-left: 2cqw }
+      </style>
+      <div class="half"><div class="pad" id="in">a</div></div>
+      <div class="pad" id="out">b</div>
+    ''')
+    inside = find_card(page, 'in')
+    outside = find_card(page, 'out')
+    # 10cqw of the 200px container.
+    assert inside.style['padding_left'] == (20, 'px')
+    # No container ancestor: resolves to 0.
+    assert outside.style['padding_left'] == (0, 'px')

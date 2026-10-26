@@ -49,7 +49,8 @@ VIEWPORT_UNITS = {
     'dvw', 'dvh', 'dvi', 'dvb', 'dvmin', 'dvmax',
     'pvw', 'pvh', 'pvi', 'pvb', 'pvmin', 'pvmax',
 }
-RELATIVE_UNITS = FONT_UNITS | VIEWPORT_UNITS
+CONTAINER_UNITS = {'cqw', 'cqi', 'cqh', 'cqb'}
+RELATIVE_UNITS = FONT_UNITS | VIEWPORT_UNITS | CONTAINER_UNITS
 LENGTH_UNITS = ABSOLUTE_UNITS | RELATIVE_UNITS
 # https://drafts.csswg.org/css-values-4/#angles
 ANGLE_UNITS = set(ANGLE_TO_RADIANS)
@@ -92,6 +93,15 @@ def to_pixels(value, style, property_name, font_size=None):
         else:
             ratio = character_ratio(style, unit)
             return value.value * font_size * ratio
+    elif unit in CONTAINER_UNITS:
+        # 1% of the nearest size-container's inline width. Elements with
+        # no container ancestor resolve to 0.
+        container_width = getattr(style, 'container_width', None)
+        if container_width is None:
+            LOGGER.debug(
+                '%s unit outside any container resolves to 0', unit)
+            return 0
+        return value.value / 100 * container_width
     elif unit in VIEWPORT_UNITS:
         page_size = style.initial_page_sizes['box' if unit[0] == 'p' else 'area']
         if page_size is None:

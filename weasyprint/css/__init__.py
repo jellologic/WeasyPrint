@@ -92,10 +92,13 @@ class StyleFor:
             for sheet, _, _ in sheets
             for rule in getattr(sheet, 'container_rules', ())] + (
             container_rules or [])
-        # The page content width is computed lazily: the page style needs
-        # the root element's cascaded styles.
-        self._page_content_width = None
-        self._page_width_done = not self._container_rules
+        self._track_containers = bool(self._container_rules) or any(
+            getattr(sheet, 'container_units_used', ())
+            for sheet, _, _ in sheets)
+        # The page content width (from the @page declarations) anchors
+        # the container-width chain. Parsing the declarations is pure, so
+        # this is safe at init time.
+        self._page_content_width = self._compute_page_content_width()
 
         PROGRESS_LOGGER.info('Step 3 - Applying CSS')
         layer_order = inf
@@ -117,6 +120,7 @@ class StyleFor:
         # Iterate on all elements, even if there is no cascaded style for them.
         containers = {}  # element -> (name, content width)
         widths = {}      # element -> content width
+        active_widths = {}  # element -> nearest container width
         for element in html.wrapper_element.iter_subtree():
             parent_element = element.parent
             if self._container_rules and containers:
@@ -174,18 +178,29 @@ class StyleFor:
                         if old_weight is None or old_weight <= weight:
                             style[name] = values, weight
             parent = element.parent.etree_element if element.parent else None
+            active_container_width = None
+            ancestor = element.parent
+            while ancestor is not None:
+                entry = containers.get(ancestor.etree_element)
+                if entry is not None:
+                    active_container_width = entry[1]
+                    break
+                ancestor = ancestor.parent
             self.set_computed_styles(
                 element.etree_element, root=html.etree_element, parent=parent,
-                base_url=html.base_url, target_collector=target_collector)
-            if self._container_rules:
+                base_url=html.base_url, target_collector=target_collector,
+                container_width=active_container_width)
+            if self._track_containers:
                 style = self._computed_styles.get((element.etree_element, None))
                 if style is not None:
                     if parent_element is None:
-                        parent_width = self._get_page_content_width(html)
+                        parent_width = self._page_content_width
                     else:
                         parent_width = widths.get(parent_element.etree_element)
                     width = self._element_content_width(style, parent_width)
                     widths[element.etree_element] = width
+                    active_widths[element.etree_element] = (
+                        active_container_width)
                     if style['container_type'] == 'inline-size':
                         name = style['container_name']
                         containers[element.etree_element] = (
@@ -205,37 +220,55 @@ class StyleFor:
                     element, pseudo_type=pseudo_type,
                     # The pseudo-element inherits from the element.
                     root=html.etree_element, parent=element,
-                    base_url=html.base_url, target_collector=target_collector)
+                    base_url=html.base_url, target_collector=target_collector,
+                    container_width=active_widths.get(element))
 
         # Clear the cascaded styles, we don't need them anymore. Keep the
         # dictionary, it is used later for page margins.
         self._cascaded_styles.clear()
 
-    def _get_page_content_width(self, html):
-        if not self._page_width_done:
-            self._page_width_done = True
-            self._page_content_width = self._compute_page_content_width(html)
-        return self._page_content_width
+    def _compute_page_content_width(self):
+        """Return the page content width from the @page declarations.
 
-    def _compute_page_content_width(self, html):
-        """Return the page content width, or None when not determinable."""
-        from ..layout.page import PageType, set_page_type_computed_styles
-        page_type = PageType('right', False, '', 1, (), 'ltr')
-        set_page_type_computed_styles(page_type, html, self)
-        style = self._computed_styles.get((page_type, None))
-        if style is None:
-            return None
-        size = style['size']
-        if size in (None, 'auto'):
-            return None
-        width = size[0]
-        for side in ('left', 'right'):
-            margin = style[f'margin_{side}']
-            if getattr(margin, 'unit', None) == '%':
-                width -= margin.value / 100 * size[0]
-            elif isinstance(margin, (int, float)):
-                width -= margin
-        return width
+        Parsing the declarations directly avoids computing the page style
+        during the cascade, which would poison the page-style cache that
+        the layout-time viewport units rely on.
+
+        """
+        from .computed_values import INITIAL_VALUES
+
+        size = tuple(INITIAL_VALUES['size'])
+        margins = {'left': 0, 'right': 0}
+        for sheet, _, _ in self._sheets:
+            for _rule, _selectors, declarations in getattr(
+                    sheet, 'page_rules', ()):
+                for name, values, _importance in declarations:
+                    if name == 'size':
+                        if values in ('auto', None):
+                            size = tuple(INITIAL_VALUES['size'])
+                        elif isinstance(values, tuple) and len(values) == 2:
+                            parsed = []
+                            for value in values:
+                                if getattr(value, 'unit', None) == '%':
+                                    parsed = None
+                                    break
+                                parsed.append(
+                                    value.value
+                                    if hasattr(value, 'value') else value)
+                            if parsed and len(parsed) == 2:
+                                size = tuple(parsed)
+                    elif name.startswith('margin_'):
+                        side = name[len('margin_'):]
+                        if side in margins and not isinstance(values, str):
+                            value = values[0] if isinstance(values, tuple) \
+                                else values
+                            if getattr(value, 'unit', None) == '%':
+                                margins[side] = value.value / 100 * size[0]
+                            elif isinstance(value, (int, float)):
+                                margins[side] = value
+                            elif hasattr(value, 'value'):
+                                margins[side] = value.value
+        return size[0] - margins['left'] - margins['right']
 
     def _resolve_width(self, value, reference):
         """Resolve a width-like computed value, None when undeterminable."""
@@ -318,7 +351,8 @@ class StyleFor:
         return style
 
     def set_computed_styles(self, element, parent, root=None, pseudo_type=None,
-                            base_url=None, target_collector=None):
+                            base_url=None, target_collector=None,
+                            container_width=None):
         """Set the computed values of styles to ``element``.
 
         Take the properties left by ``apply_style_rule`` on an element or
@@ -355,6 +389,7 @@ class StyleFor:
                     frozenset((name, id(value), weight)
                               for name, (value, weight) in cascaded.items()),
                     None if attrib is None else frozenset(attrib.items()),
+                    container_width,
                 )
             except TypeError:
                 # Unhashable cascaded weight/value (e.g. some page rules):
@@ -370,7 +405,7 @@ class StyleFor:
 
         computed = computed_styles[element, pseudo_type] = ComputedStyle(
             parent_style, cascaded, element, pseudo_type, root_style, base_url,
-            self.font_config, self.initial_page_sizes)
+            self.font_config, self.initial_page_sizes, container_width)
         if share_key is not None:
             self._computed_cache[share_key] = computed
         if target_collector and computed['anchor']:
@@ -1277,7 +1312,8 @@ class AnonymousStyle(dict):
 class ComputedStyle(dict):
     """Computed style used for non-anonymous boxes."""
     def __init__(self, parent_style, cascaded, element, pseudo_type,
-                 root_style, base_url, font_config, initial_page_sizes):
+                 root_style, base_url, font_config, initial_page_sizes,
+                 container_width=None):
         self.specified = {}
         self.parent_style = parent_style
         self.cascaded = cascaded
@@ -1288,12 +1324,15 @@ class ComputedStyle(dict):
         self.base_url = base_url
         self.font_config = font_config
         self.initial_page_sizes = initial_page_sizes
+        # Inline size of the nearest size container, for container units.
+        self.container_width = container_width
         self.cache = parent_style.cache if parent_style else {}
 
     def copy(self):
         copy = ComputedStyle(
             self.parent_style, self.cascaded, self.element, self.pseudo_type,
-            self.root_style, self.base_url, self.font_config, self.initial_page_sizes)
+            self.root_style, self.base_url, self.font_config,
+            self.initial_page_sizes, self.container_width)
         copy.update(self)
         copy.specified = self.specified.copy()
         return copy
@@ -1855,11 +1894,24 @@ def parse_container_condition(block):
     return
 
 
+def _has_container_units(value):
+    """Return whether a validated declaration value uses cq units."""
+    unit = getattr(value, 'unit', None)
+    if unit is not None and str(unit).startswith('cq'):
+        return True
+    if isinstance(value, (tuple, list)):
+        return any(_has_container_units(item) for item in value)
+    return False
+
+
 def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fetcher,
                           matcher, page_rules, container_rules=None, layers=None,
                           font_config=None, counter_style=None,
-                          color_profiles=None, ignore_imports=False, layer=None):
+                          color_profiles=None, ignore_imports=False, layer=None,
+                          container_units_used=None):
     """Do what can be done early on stylesheet, before being in a document."""
+    container_units_used = (
+        [] if container_units_used is None else container_units_used)
     container_rules = [] if container_rules is None else container_rules
     for rule in stylesheet_rules:
         if getattr(rule, 'content', None) is None:
@@ -1888,6 +1940,11 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                     for selectors, declarations in selectors_declarations:
                         declarations = [
                             declaration[1] for declaration in declarations]
+                        if any(
+                            _has_container_units(values)
+                            for _, values, _ in declarations
+                        ):
+                            container_units_used.append(True)
                         for selector in selectors:
                             matcher.add_selector(selector, (declarations, layer))
                             if selector.pseudo_element not in PSEUDO_ELEMENTS:
@@ -1990,7 +2047,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
                 page_rules, container_rules, layers, font_config, counter_style,
-                color_profiles, ignore_imports=True)
+                color_profiles, ignore_imports=True,
+                container_units_used=container_units_used)
 
         elif rule.type == 'at-rule' and rule.lower_at_keyword == 'supports':
             supported = _evaluate_supports_condition(rule.prelude, base_url)
@@ -2008,7 +2066,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
                 page_rules, container_rules, layers, font_config, counter_style,
-                color_profiles, ignore_imports=True, layer=layer)
+                color_profiles, ignore_imports=True, layer=layer,
+                container_units_used=container_units_used)
 
         elif rule.type == 'at-rule' and rule.lower_at_keyword == 'container':
             prelude = [
@@ -2262,7 +2321,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
                 page_rules, container_rules, layers, font_config, counter_style,
-                color_profiles, ignore_imports=True, layer=new_layer)
+                color_profiles, ignore_imports=True, layer=new_layer,
+                container_units_used=container_units_used)
 
         else:
             LOGGER.warning(
