@@ -86,3 +86,38 @@ def test_container_query_no_container():
       <div><div class="card" id="ca">a</div></div>
     ''')
     assert find_card(page, 'ca').style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_query_range_syntax():
+    # MQ-style range syntax: (width >= …), (… <= width) and clamped bands.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .slot { container-type: inline-size }
+        .half { width: 50% }
+        .quarter { width: 25% }
+        @container (width >= 150px) { .a { border: 2px solid } }
+        @container (100px < width) { .b { border: 2px solid } }
+        @container (100px < width < 150px) { .c { border: 2px solid } }
+      </style>
+      <div class="slot half">
+        <div class="card a" id="ca">a</div>
+        <div class="card b" id="cb">b</div>
+        <div class="card c" id="cc">c</div>
+      </div>
+      <div class="slot quarter">
+        <div class="card a" id="da">a</div>
+        <div class="card b" id="db">b</div>
+        <div class="card c" id="dc">c</div>
+      </div>
+    ''')
+    # The half slot is 200px wide, the quarter slot 100px.
+    assert find_card(page, 'ca').style['border_left_width'] == 2
+    assert find_card(page, 'da').style['border_left_width'] == 0
+    assert find_card(page, 'cb').style['border_left_width'] == 2
+    assert find_card(page, 'db').style['border_left_width'] == 0
+    # The open band excludes both slots (200 >= 150 and 100 <= 100).
+    assert find_card(page, 'cc').style['border_left_width'] == 0
+    assert find_card(page, 'dc').style['border_left_width'] == 0

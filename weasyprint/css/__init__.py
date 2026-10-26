@@ -125,7 +125,7 @@ class StyleFor:
                     if parent_element is not None else None)
                 # Apply container rules against the nearest matching
                 # ancestor container.
-                for name, (feature, length), selectors, declarations in (
+                for name, condition, selectors, declarations in (
                         self._container_rules):
                     ancestor = element.parent
                     container_width = None
@@ -138,10 +138,14 @@ class StyleFor:
                         ancestor = ancestor.parent
                     if container_width is None:
                         continue
-                    if feature == 'min-width':
-                        if container_width < length:
-                            continue
-                    elif container_width > length:
+                    lower, lower_strict, upper, upper_strict = condition
+                    if lower is not None and (
+                            container_width < lower or
+                            (lower_strict and container_width == lower)):
+                        continue
+                    if upper is not None and (
+                            container_width > upper or
+                            (upper_strict and container_width == upper)):
                         continue
                     style = cascaded_styles.setdefault(
                         (element.etree_element, None), {})
@@ -1758,27 +1762,97 @@ def _evaluate_supports_condition(prelude, base_url):
     return result
 
 
+def _container_length(token):
+    """Return a plain pixel length for a container condition, or None."""
+    value = get_length(token, negative=False)
+    if value is None or getattr(value, 'unit', None) == '%':
+        return
+    return value.value if hasattr(value, 'value') else value
+
+
 def parse_container_condition(block):
     """Parse a ``@container`` width condition.
 
-    Return ``(feature, length)`` with feature in min-width / max-width and
-    the length in pixels, or None when the condition is unsupported.
+    Return ``(lower, lower_strict, upper, upper_strict)`` bounds (None for
+    unbounded), or None when the condition is unsupported. Supports
+    ``(min-width: …)``, ``(max-width: …)`` and the range syntax
+    ``(width >= …)``, ``(… <= width)``, ``(… <= width <= …)``.
 
     """
     tokens = [
         token for token in block.content
         if token.type not in ('whitespace', 'comment')]
-    if len(tokens) != 3 or tokens[0].type != 'ident':
+
+    # Merge two-token operators (>, =) into one (>=, <=, …).
+    merged = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if (token.type == 'literal' and token.value in '<>=' and
+                index + 1 < len(tokens) and
+                tokens[index + 1].type == 'literal' and
+                tokens[index + 1].value in '<='):
+            merged.append(token.value + tokens[index + 1].value)
+            index += 2
+        elif token.type == 'literal':
+            merged.append(token.value)
+            index += 1
+        elif token.type == 'ident':
+            merged.append(token.lower_value)
+            index += 1
+        else:
+            merged.append(token)
+            index += 1
+
+    def bounds(lower, lower_strict, upper, upper_strict):
+        return (lower, lower_strict, upper, upper_strict)
+
+    # (min-width: L) and (max-width: L).
+    if len(merged) == 3 and merged[0] == 'width' and merged[1] == ':':
         return
-    if tokens[1].type != 'literal' or tokens[1].value != ':':
+    if (
+            len(merged) == 3 and merged[0] in ('min-width', 'max-width') and
+            merged[1] == ':'):
+        value = _container_length(merged[2])
+        if value is None:
+            return
+        if merged[0] == 'min-width':
+            return bounds(value, False, None, False)
+        return bounds(None, False, value, False)
+
+    # (width OP L), (L OP width) and (L1 OP width OP L2).
+    if len(merged) == 3 and merged[1] in ('>=', '>', '=', '<=', '<'):
+        if merged[0] == 'width':
+            value = _container_length(merged[2])
+            if value is None:
+                return
+            operator = merged[1]
+            if operator in ('>=', '>'):
+                return bounds(value, operator == '>', None, False)
+            elif operator in ('<=', '<'):
+                return bounds(None, False, value, operator == '<')
+            return bounds(value, False, value, False)
+        if merged[2] == 'width':
+            value = _container_length(merged[0])
+            if value is None:
+                return
+            operator = merged[1]
+            if operator in ('<=', '<'):
+                return bounds(value, operator == '<', None, False)
+            elif operator in ('>=', '>'):
+                return bounds(None, False, value, operator == '>')
+            return bounds(value, False, value, False)
         return
-    feature = tokens[0].lower_value
-    if feature not in ('min-width', 'max-width'):
-        return
-    value = get_length(tokens[2], negative=False)
-    if value is None or getattr(value, 'unit', None) == '%':
-        return
-    return (feature, value.value if hasattr(value, 'value') else value)
+    if (
+            len(merged) == 5 and merged[2] == 'width' and
+            merged[1] in ('<=', '<') and merged[3] in ('<=', '<')):
+        lower = _container_length(merged[0])
+        upper = _container_length(merged[4])
+        if lower is None or upper is None:
+            return
+        return bounds(
+            lower, merged[1] == '<', upper, merged[3] == '<')
+    return
 
 
 def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fetcher,
