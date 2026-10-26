@@ -221,3 +221,22 @@ def test_container_query_cqh_size_container():
     inside = find_card(page, 'in')
     # 10cqh of the 100px size container.
     assert inside.style['padding_top'] == (10, 'px')
+
+
+@assert_no_logs
+def test_container_style_query_container_excluded():
+    # Style queries do not match the queried container itself: the rule
+    # targets the container's own class but applies only to descendants.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .c { --theme: dark; container-type: inline-size }
+        @container style(--theme: dark) { .c { border: 2px solid } }
+      </style>
+      <div class="c">x</div>
+    ''')
+    html, = page.children
+    body, = html.children
+    container, = body.children
+    assert container.style['border_left_width'] == 0
