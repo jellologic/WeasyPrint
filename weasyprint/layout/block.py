@@ -397,18 +397,16 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
     if adjoining_margins:
         position_y += collapse_margin(adjoining_margins)
     new_containing_block = box
-    height_value = box.style['height']
     if (
             box.style['writing_mode'] != 'horizontal-tb' and
-            height_value != 'auto' and
-            getattr(height_value, 'unit', None) not in (None, '%')):
+            box.height != 'auto' and box.height):
         # Vertical writing: the children’s inline axis is the box’s
-        # definite height. Lay them in a swapped containing block; the
-        # box is drawn rotated (see draw_block_level). Percentage
-        # heights follow the standard rules (auto with an indefinite
-        # containing height) and fall back to horizontal.
+        # resolved height (definite lengths and resolvable percentages).
+        # Lay them in a swapped containing block; the box is drawn
+        # rotated (see draw_block_level). With an indefinite height the
+        # block falls back to horizontal.
         swap = box.copy()
-        swap.width, swap.height = height_value.value, box.width
+        swap.width, swap.height = box.height, box.width
         new_containing_block = swap
     # text-wrap: balance — narrow the line-breaking width so that the
     # lines of a short block (single font run, at most 6 lines) equalise,

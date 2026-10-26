@@ -60,3 +60,27 @@ def test_writing_mode_validation():
     # Unknown values are ignored.
     assert first.style['writing_mode'] == 'horizontal-tb'
     assert second.style['writing_mode'] == 'sideways-lr'
+
+
+@assert_no_logs
+def test_writing_mode_percentage_height():
+    # Percentage heights resolve against the containing block: the
+    # vertical text lays within the resolved 100px height.
+    page, = render_pages('''
+      <style>
+        @page { size: 300px 300px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 20px;
+               line-height: 20px }
+        .wrap { height: 200px }
+        .head { writing-mode: vertical-rl; width: 20px; height: 50% }
+      </style>
+      <div class="wrap"><div class="head">Head</div></div>
+    ''')
+    html, = page.children
+    body, = html.children
+    wrap, = body.children
+    head, = wrap.children
+    assert head.width == 20
+    assert head.height == 100
+    line, = head.children
+    assert line.width <= 100
