@@ -25,6 +25,7 @@ INITIAL_VALUES = {
     'comb': 'none',
     'translate': 'none',
     'aspect_ratio': 'auto',
+    'margin_trim': 'none',
     'rotate': 'none',
     'scale': 'none',
     'place_items': 'normal',

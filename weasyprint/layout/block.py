@@ -3,6 +3,7 @@
 from functools import partial
 from math import ceil, inf
 
+from ..css.properties import Dimension
 from ..formatting_structure import boxes
 from ..logger import LOGGER
 from .absolute import AbsolutePlaceholder, absolute_layout
@@ -820,6 +821,17 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
         skip = 0
     else:
         (skip, skip_stack), = skip_stack.items()
+    # Proprietary margin-trim: drop the in-flow children margins
+    # adjacent to the container block edges.
+    if box.style['margin_trim'] != 'none':
+        in_flow_children = [
+            child for child in box.children
+            if child.is_in_normal_flow()]
+        if in_flow_children:
+            first = in_flow_children[0]
+            last = in_flow_children[-1]
+            first.style['margin_top'] = Dimension(0, 'px')
+            last.style['margin_bottom'] = Dimension(0, 'px')
     for index, child in enumerate(box.children[skip:], start=(skip or 0)):
         child.position_x = position_x
         child.position_y = position_y  # doesn’t count adjoining_margins

@@ -1072,6 +1072,13 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('margin-trim')
+@single_keyword
+def margin_trim(keyword):
+    """``margin-trim`` property validation."""
+    return keyword in ('none', 'in-flow', 'block', 'inline')
+
+
 @property('aspect-ratio')
 def aspect_ratio(tokens):
     """``aspect-ratio`` property validation."""
