@@ -854,6 +854,13 @@ def apply_text_box_trim(box, new_children, position_y, is_start, is_end):
     return position_y
 
 
+def count_first_fragment_lines_rows(box):
+    """Count the lines and table rows in the first fragment ``box``."""
+    return sum(
+        isinstance(descendant, (boxes.LineBox, boxes.TableRowBox))
+        for descendant in box.descendants())
+
+
 def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty,
                            absolute_boxes, fixed_boxes, adjoining_margins,
                            first_letter_style, first_line_style, discard, max_lines):
@@ -921,6 +928,7 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
         skip = 0
     else:
         (skip, skip_stack), = skip_stack.items()
+    pending_keep_with_next = 0
     # Proprietary margin-trim: drop the in-flow children margins
     # adjacent to the container block edges.
     if box.style['margin_trim'] != 'none':
@@ -977,6 +985,29 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
                  discard, next_page, max_lines)
             skip_stack = None
             first_letter_style = first_line_style = None
+
+            # -weasy-keep-with-next: the previous sibling asked to keep at
+            # least N lines or rows of this child’s content with it. When
+            # this child is fragmented with fewer, move the page break
+            # before the previous sibling, so that both start on the next
+            # page.
+            if resume_at is not None and pending_keep_with_next:
+                fragment = new_children[-1] if new_children else None
+                if fragment is not None and (
+                        count_first_fragment_lines_rows(fragment) <
+                        pending_keep_with_next):
+                    remove_placeholders(
+                        context, [fragment], absolute_boxes, fixed_boxes)
+                    result = find_earlier_page_break(
+                        context, new_children[:-1], absolute_boxes,
+                        fixed_boxes)
+                    if result:
+                        new_children, resume_at = result
+                        stop = True
+                        adjoining_margins = []
+                        break
+            pending_keep_with_next = (
+                child.style['keep_with_next'] if resume_at is None else 0)
 
             # Handle max-lines.
             if None not in (new_max_lines, max_lines):

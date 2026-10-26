@@ -1072,6 +1072,15 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('keep-with-next', proprietary=True)
+@single_token
+def keep_with_next(token):
+    """``-weasy-keep-with-next`` property validation."""
+    number = get_number(token, integer=True)
+    if number is not None and number.value >= 0:
+        return number.value
+
+
 @property('text-wrap')
 @single_keyword
 def text_wrap(keyword):

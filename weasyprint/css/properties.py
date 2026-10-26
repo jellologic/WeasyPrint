@@ -36,6 +36,7 @@ INITIAL_VALUES = {
     'overprint': 'none',
     'overprint_mode': 0,
     'break_before_min_space': 'auto',
+    'keep_with_next': 0,
     'float_reference': 'inline',
     'left': 'auto',
     'line_height': 'normal',
