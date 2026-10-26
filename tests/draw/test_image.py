@@ -623,3 +623,51 @@ def test_image_exif_image_orientation_keep_format():
                src="not-optimized-exif.jpg">''',
         base_url=resource_path('<inline HTML>')).write_pdf()
     assert b'DCTDecode' in pdf
+
+
+@assert_no_logs
+def test_object_view_box(assert_pixels):
+    # The view box is the left half of the 4×4 pattern: the 1px-wide red
+    # pixel covers half of the rendered width.
+    assert_pixels('''
+      rrrrBBBB
+      rrrrBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+    ''', '''
+      <style>
+        @page { size: 8px; margin: 0 }
+        body { margin: 0; font-size: 0 }
+        img { display: block; width: 8px; height: 8px;
+              image-rendering: pixelated;
+              object-view-box: inset(0 50% 0 0) }
+      </style>
+      <div><img src="pattern.png"></div>''')
+
+
+@assert_no_logs
+def test_object_view_box_lengths(assert_pixels):
+    # Lengths are resolved against the natural size: the view box is the
+    # top-left 2×2 quadrant.
+    assert_pixels('''
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+    ''', '''
+      <style>
+        @page { size: 8px; margin: 0 }
+        body { margin: 0; font-size: 0 }
+        img { display: block; width: 8px; height: 8px;
+              image-rendering: pixelated;
+              object-view-box: inset(0 2px 2px 0) }
+      </style>
+      <div><img src="pattern.png"></div>''')

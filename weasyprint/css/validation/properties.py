@@ -1072,6 +1072,24 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property()
+def object_view_box(tokens):
+    """Validation for the ``object-view-box`` property."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    if (
+            len(tokens) == 1 and tokens[0].type == 'function' and
+            tokens[0].lower_name == 'inset'):
+        arguments = [
+            token for token in tokens[0].arguments
+            if token.type != 'whitespace']
+        if len(arguments) == 4:
+            values = [
+                get_length(token, percentage=True) for token in arguments]
+            if all(value is not None for value in values):
+                return tuple(values)
+
+
 @property('keep-with-next', proprietary=True)
 @single_token
 def keep_with_next(token):

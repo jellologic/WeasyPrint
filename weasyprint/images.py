@@ -33,6 +33,13 @@ class ImageLoadingError(ValueError):
     """
 
 
+def view_box_edge(value, against):
+    """Resolve one ``object-view-box`` inset edge against a natural size."""
+    if getattr(value, 'unit', None) == '%':
+        return value.value * against / 100
+    return value.value
+
+
 def apply_css_filter(pillow_image, css_filters):
     """Apply CSS ``filter`` functions to a Pillow image."""
     image = pillow_image.convert('RGBA')
@@ -221,6 +228,35 @@ class RasterImage:
             if dpi > self._dpi:
                 ratio = self._dpi / dpi
         image_name = stream.add_image(image, interpolate, ratio)
+
+        # object-view-box: only draw the inset view box of the image,
+        # scaled to the concrete box.
+        view_box = None
+        try:
+            view_box = style['object_view_box']
+        except (KeyError, TypeError):
+            pass
+        if view_box and view_box != 'none':
+            width, height = self.width, self.height
+            top, right, bottom, left = (
+                view_box_edge(value, size) for value, size in zip(
+                    view_box, (height, width, height, width)))
+            box_width = width - left - right
+            box_height = height - top - bottom
+            if box_width > 0 and box_height > 0:
+                u0, uw = left / width, box_width / width
+                v0, vh = bottom / height, box_height / height
+                stream.push_state()
+                stream.rectangle(0, 0, concrete_width, concrete_height)
+                stream.clip()
+                stream.end()
+                stream.transform(
+                    concrete_width / uw, 0, 0, -concrete_height / vh,
+                    -concrete_width * u0 / uw,
+                    concrete_height * (v0 + vh) / vh)
+                stream.draw_x_object(image_name)
+                stream.pop_state()
+                return
 
         stream.transform(
             concrete_width, 0, 0, -concrete_height, 0, concrete_height)

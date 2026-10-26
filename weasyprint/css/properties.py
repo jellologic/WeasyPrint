@@ -178,6 +178,7 @@ INITIAL_VALUES = {
     'object_fit': 'fill',
     'object_position': (('left', Dimension(50, '%'),
                          'top', Dimension(50, '%')),),
+    'object_view_box': 'none',
 
     # Paged Media 3 (WD): https://www.w3.org/TR/css-page-3/
     'size': None,  # set to A4 in computed_values
