@@ -470,6 +470,27 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
         child for child in table.children
         if not child.is_header and not child.is_footer]
 
+    def add_continuation_marker(header, table):
+        """Add a ``-weasy-continued-content`` row below the repeated header.
+
+        The marker only appears on continuation fragments, where the table
+        is re-laid from a skip stack.
+
+        """
+        text = table.style['continued_content']
+        last_row = header.children[-1]
+        cell_style = (
+            last_row.children[0].style if last_row.children else last_row.style)
+        tag = f'{table.element_tag}::-weasy-continued'
+        line = boxes.LineBox(tag, cell_style, table.element, [
+            boxes.TextBox(tag, cell_style, table.element, text)])
+        block = boxes.BlockBox(tag, cell_style, table.element, [line])
+        cell = boxes.TableCellBox(tag, cell_style, table.element, [block])
+        cell.grid_x = 0
+        cell.colspan = len(column_widths)
+        row = boxes.TableRowBox(tag, cell_style, table.element, [cell])
+        return header.copy_with_children([*header.children, row])
+
     def all_groups_layout():
         # If the page is not empty, we try to render the header and the footer
         # on it. If the table does not fit on the page, we try to render it on
@@ -486,6 +507,10 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
 
         if has_header:
             header = table.children[0]
+            if (
+                    skip_stack is not None and
+                    table.style['continued_content'] not in (None, 'none')):
+                header = add_continuation_marker(header, table)
             header, resume_at, next_page = group_layout(
                 header, position_y, header_footer_bottom_space,
                 skip_stack=None, page_is_empty=False)
