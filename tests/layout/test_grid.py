@@ -4,7 +4,7 @@ from math import isclose
 
 import pytest
 
-from ..testing_utils import assert_no_logs, render_pages
+from ..testing_utils import assert_no_logs, capture_logs, render_pages
 
 
 @assert_no_logs
@@ -1939,3 +1939,55 @@ def test_grid_in_columns_with_break():
     section2, section3 = grid.children
     assert section2.position_y == 0
     assert section3.position_y == 4
+
+
+@assert_no_logs
+def test_grid_negative_line_numbers():
+    # Negative line numbers count from the end: 1 / -1 spans the whole
+    # grid.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0 }
+        article { display: grid; grid-template-columns: repeat(4, 1fr);
+                  gap: 0 15px }
+        div { grid-column: 1 / -1 }
+      </style>
+      <article><div>span</div></article>
+    ''')
+    html, = page.children
+    body, = html.children
+    article, = body.children
+    div, = article.children
+    assert div.position_x == article.position_x == 0
+    assert div.width == article.width
+
+
+@assert_no_logs
+def test_grid_subgrid_fallback():
+    # Unsupported subgrid behaves as none: the items stay readable,
+    # stacked in one full-width column.
+    with capture_logs() as logs:
+        page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0 }
+        article { display: grid; grid-template-columns: repeat(4, 1fr);
+                  gap: 0 15px }
+        div.s { grid-column: 1 / -1; display: grid;
+                grid-template-columns: subgrid }
+      </style>
+      <article>
+        <div class="s"><div>a</div><div>b</div></div>
+      </article>
+    ''')
+    assert any('Subgrids are unsupported' in log for log in logs)
+    html, = page.children
+    body, = html.children
+    article, = body.children
+    nested, = article.children
+    assert nested.position_x == article.position_x == 0
+    assert nested.width == article.width
+    a, b = nested.children
+    assert a.width == b.width == nested.width
+    assert b.position_y > a.position_y

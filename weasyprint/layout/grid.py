@@ -45,7 +45,11 @@ def _get_line(line, lines, side):
             number = 1
     if number is not None and span is None:
         if ident is None:
-            coord = number - 1
+            if number > 0:
+                coord = number - 1
+            else:
+                # Negative numbers count lines from the end.
+                coord = len(lines) + number
         else:
             step = 1 if number > 0 else -1
             for coord, line in enumerate(lines[::step]):
