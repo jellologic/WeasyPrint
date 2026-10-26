@@ -406,7 +406,13 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
         # rotated (see draw_block_level). With an indefinite height the
         # block falls back to horizontal.
         swap = box.copy()
-        swap.width, swap.height = box.height, box.width
+        # Cap the run length at the available page height so the
+        # fragment fits the page; the continuation re-lays on the next
+        # page through the standard fragmentation machinery.
+        available_height = context.page_bottom - bottom_space - position_y
+        if available_height > 0:
+            swap.width = min(box.height, available_height)
+        swap.height = box.width
         new_containing_block = swap
     # text-wrap: balance — narrow the line-breaking width so that the
     # lines of a short block (single font run, at most 6 lines) equalise,
