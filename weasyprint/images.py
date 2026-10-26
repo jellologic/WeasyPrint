@@ -1,5 +1,6 @@
 """Fetch and decode images in various formats."""
 
+import copy
 import io
 import math
 import struct
@@ -7,6 +8,7 @@ from hashlib import md5
 from io import BytesIO
 from itertools import cycle
 from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree
 
 import pydyf
@@ -29,6 +31,64 @@ class ImageLoadingError(ValueError):
     The image data is probably corrupted or in an invalid format.
 
     """
+
+
+def apply_css_filter(pillow_image, css_filters):
+    """Apply CSS ``filter`` functions to a Pillow image."""
+    image = pillow_image.convert('RGBA')
+    alpha = image.getchannel('A')
+    rgb = image.convert('RGB')
+    for name, argument in css_filters:
+        if name != 'saturate':
+            argument = max(0, min(argument, 1))
+        else:
+            argument = max(0, argument)
+        if name in ('grayscale', 'sepia', 'saturate'):
+            if name == 'grayscale':
+                matrix = (.2126, .7152, .0722,
+                          .2126, .7152, .0722,
+                          .2126, .7152, .0722)
+            elif name == 'sepia':
+                matrix = (.393, .769, .189,
+                          .349, .686, .168,
+                          .272, .534, .131)
+            else:
+                identity = (1, 0, 0, 0, 1, 0, 0, 0, 1)
+                matrix = tuple(
+                    argument * coefficient
+                    for coefficient in identity)
+            mixed = tuple(
+                argument * coefficient + (1 - argument) * one
+                for coefficient, one in zip(
+                    matrix, (1, 0, 0, 0, 1, 0, 0, 0, 1)))
+            # Pillow wants a 4x4 matrix with an offset column.
+            matrix_12 = []
+            for row in range(3):
+                matrix_12.extend(mixed[row * 3:row * 3 + 3])
+                matrix_12.append(0)
+            rgb = rgb.convert('RGB', matrix_12)
+        elif name == 'brightness':
+            lut = [
+                max(0, min(255, round(i * argument))) for i in range(256)]
+            rgb = rgb.point(lut * 3)
+        elif name == 'contrast':
+            lut = [
+                max(0, min(255, round(
+                    argument * (i / 255 - 0.5) * 255 + 127.5)))
+                for i in range(256)]
+            rgb = rgb.point(lut * 3)
+        elif name == 'invert':
+            lut = [
+                max(0, min(255, round(
+                    argument * (255 - i) + (1 - argument) * i)))
+                for i in range(256)]
+            rgb = rgb.point(lut * 3)
+        elif name == 'opacity':
+            lut = [max(0, min(255, round(i * argument))) for i in range(256)]
+            alpha = alpha.point(lut)
+    filtered = rgb.convert('RGBA')
+    filtered.putalpha(alpha)
+    return filtered
 
 
 class RasterImage:
@@ -142,6 +202,14 @@ class RasterImage:
         if self.width <= 0 or self.height <= 0:
             return
 
+        try:
+            filters = style['filter']
+        except (KeyError, TypeError):
+            filters = None
+        filters = filters or 'none'
+        image = self
+        if filters != 'none':
+            image = self.filtered(filters)
         image_rendering = style['image_rendering']
         interpolate = image_rendering == 'auto'
         ratio = 1
@@ -152,11 +220,26 @@ class RasterImage:
             dpi = max(self.width / width_inches, self.height / height_inches)
             if dpi > self._dpi:
                 ratio = self._dpi / dpi
-        image_name = stream.add_image(self, interpolate, ratio)
+        image_name = stream.add_image(image, interpolate, ratio)
 
         stream.transform(
             concrete_width, 0, 0, -concrete_height, 0, concrete_height)
         stream.draw_x_object(image_name)
+
+
+    def filtered(self, css_filters):
+        """Return a copy of this image with CSS filter functions applied."""
+        pillow_image = Image.open(io.BytesIO(self.image_data.data))
+        filtered = apply_css_filter(pillow_image, css_filters)
+        image_file = io.BytesIO()
+        filtered.save(image_file, format='PNG')
+        clone = copy.copy(self)
+        clone.image_data = SimpleNamespace(data=image_file.getvalue())
+        digest = md5(
+            repr(css_filters).encode(),
+            usedforsecurity=False).hexdigest()[:8]
+        clone.id = f'{self.id}-filter-{digest}'
+        return clone
 
     def cache_image_data(self, data, filename=None, slot='source'):
         if filename:

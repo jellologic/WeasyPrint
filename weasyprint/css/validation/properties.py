@@ -1073,6 +1073,35 @@ def weasy_break_before_min_space(token):
 
 
 @property()
+def filter(tokens):
+    """``filter`` property validation."""
+    if get_single_keyword(tokens) == 'none':
+        return 'none'
+    filters = []
+    for token in tokens:
+        function = Function(token)
+        arguments = function.split_comma()
+        if function.name not in (
+                'grayscale', 'sepia', 'saturate', 'brightness',
+                'contrast', 'invert', 'opacity'):
+            return
+        if len(arguments) == 1:
+            argument = arguments[0]
+            if argument.type == 'number':
+                value = argument.value
+            elif argument.type == 'percentage':
+                value = argument.value / 100
+            else:
+                return
+        elif len(arguments) == 0:
+            value = 1
+        else:
+            return
+        filters.append((function.name, value))
+    return tuple(filters) if filters else None
+
+
+@property()
 @single_keyword
 def float_reference(keyword):
     """``float-reference`` property validation."""
