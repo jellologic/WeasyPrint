@@ -4,7 +4,9 @@ import pytest
 
 from weasyprint.css import InitialStyle
 from weasyprint.formatting_structure.build import capitalize
-from weasyprint.text.fonts import FontConfiguration
+from weasyprint.text.ffi import pango
+from weasyprint.text.fonts import (
+    FontConfiguration, get_font_description, get_font_real_style)
 from weasyprint.text.line_break import split_first_line
 
 from .testing_utils import MONO_FONTS, SANS_FONTS, assert_no_logs, render_pages
@@ -1638,3 +1640,53 @@ def test_first_line_first_letter():
     next_line_text, = line2.children
     assert next_line_text.style['font_style'] == 'normal'
     assert next_line_text.style['font_weight'] == 400
+
+
+@assert_no_logs
+def test_font_synthesis_expansion():
+    page, = render_pages(
+        '<style>body {font-synthesis: style weight}</style><p>x</p>')
+    text_box = next(
+        box for box in page.descendants()
+        if type(box).__name__ == 'TextBox')
+    assert text_box.style['font_synthesis_weight'] == 'none'
+    assert text_box.style['font_synthesis_style'] == 'none'
+    assert text_box.style['font_synthesis_small_caps'] == 'auto'
+
+    page, = render_pages(
+        '<style>body {font-synthesis: none}</style><p>x</p>')
+    text_box = next(
+        box for box in page.descendants()
+        if type(box).__name__ == 'TextBox')
+    assert text_box.style['font_synthesis_weight'] == 'none'
+    assert text_box.style['font_synthesis_style'] == 'none'
+    assert text_box.style['font_synthesis_small_caps'] == 'none'
+
+
+@assert_no_logs
+def test_font_synthesis_small_caps_kept():
+    # The bundled font has a real smcp feature: font-synthesis-small-caps
+    # with none must not turn the real small caps off.
+    page, = render_pages(
+        '<style>body {font-family: weasyprint;'
+        ' font-variant-caps: small-caps;'
+        ' font-synthesis-small-caps: none}</style><p>x</p>')
+    text_box = next(
+        box for box in page.descendants()
+        if type(box).__name__ == 'TextBox')
+    description = get_font_description(text_box.style)
+    assert pango.pango_font_description_get_variant(
+        description) == pango.PANGO_VARIANT_SMALL_CAPS
+
+
+@assert_no_logs
+def test_font_real_style():
+    # The bundled test font only has one upright 400-weight face, and it
+    # has a real smcp feature.
+    page, = render_pages(
+        '<style>body {font-family: weasyprint; font-weight: bold;'
+        ' font-style: italic}</style><p>x</p>')
+    text_box = next(
+        box for box in page.descendants()
+        if type(box).__name__ == 'TextBox')
+    assert get_font_real_style(text_box.style) == (400, False, True)

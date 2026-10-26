@@ -1086,6 +1086,17 @@ def margin_trim(keyword):
     return keyword in ('none', 'in-flow', 'block', 'inline')
 
 
+@property('font-synthesis-weight')
+@property('font-synthesis-style')
+@property('font-synthesis-small-caps')
+@single_token
+def font_synthesis(token):
+    """Validation for the ``font-synthesis-*`` longhands."""
+    keyword = get_keyword(token)
+    if keyword in ('auto', 'none'):
+        return keyword
+
+
 @property('font-size-adjust')
 def font_size_adjust(tokens):
     """``font-size-adjust`` property validation."""

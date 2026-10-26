@@ -1316,3 +1316,33 @@ def test_unicode_range(assert_pixels):
           margin: 2px 1px;
         }
       </style>ADZB''')
+
+
+def test_font_synthesis(assert_same_renderings):
+    # The bundled font has a single upright 400-weight face: disabling
+    # synthesis must fall back to that face.
+    base = '''
+      <style>
+        @page { size: 50px 20px; margin: 0; background: #fff }
+        body { font-family: weasyprint; font-size: 16px }
+      </style>
+      <div>liga</div>
+    '''
+    bold = base.replace(
+        '<div>', '<div style="font-weight: bold">')
+    assert_same_renderings(
+        base, bold.replace(
+            '<div style="font-weight: bold">',
+            '<div style="font-weight: bold;'
+            ' font-synthesis-weight: none">'))
+    assert_same_renderings(
+        base, bold.replace(
+            '<div style="font-weight: bold">',
+            '<div style="font-weight: bold; font-synthesis: none">'))
+    italic = base.replace(
+        '<div>', '<div style="font-style: italic">')
+    assert_same_renderings(
+        base, italic.replace(
+            '<div style="font-style: italic">',
+            '<div style="font-style: italic;'
+            ' font-synthesis-style: none">'))

@@ -143,6 +143,9 @@ INITIAL_VALUES = {
     'font_variant_ligatures': 'normal',
     'font_variant_numeric': 'normal',
     'font_variant_position': 'normal',
+    'font_synthesis_small_caps': 'auto',
+    'font_synthesis_style': 'auto',
+    'font_synthesis_weight': 'auto',
     'font_weight': 400,
 
     # Fonts 4 (WD): https://www.w3.org/TR/css-fonts-4/
@@ -369,6 +372,9 @@ INHERITED = {
     'font_variant_ligatures',
     'font_variant_numeric',
     'font_variant_position',
+    'font_synthesis_small_caps',
+    'font_synthesis_style',
+    'font_synthesis_weight',
     'font_variation_settings',
     'font_weight',
     'hyphens',

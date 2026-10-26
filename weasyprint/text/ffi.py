@@ -322,6 +322,8 @@ ffi.cdef('''
     const char* pango_font_description_get_variations (
         const PangoFontDescription* desc);
     PangoWeight pango_font_description_get_weight (const PangoFontDescription* desc);
+    PangoVariant pango_font_description_get_variant (
+        const PangoFontDescription* desc);
     int pango_font_description_get_size (PangoFontDescription *desc);
 
     void pango_font_description_unset_fields (

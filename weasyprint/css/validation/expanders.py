@@ -19,7 +19,7 @@ from .properties import (  # isort:skip
     border_width, box, column_count, column_width, flex_basis, flex_direction,
     flex_grow_shrink, flex_wrap, font_family, font_size, font_stretch, font_style,
     font_variant_caps, font_weight, gap, grid_line, grid_template,
-    justify_content, justify_items, justify_self, line_height,
+    line_height,
     list_style_image, list_style_position, list_style_type, mask_border_mode,
     other_colors, overflow, overflow_wrap, text_decoration_thickness,
     validate_non_shorthand)
@@ -689,6 +689,33 @@ def font_variant(tokens, name):
 
     """
     return expand_font_variant(tokens)
+
+
+@expander('font-synthesis')
+def font_synthesis(tokens, name, base_url):
+    """Expand the ``font-synthesis`` shorthand property.
+
+    https://www.w3.org/TR/css-fonts-4/#font-synthesis-prop
+
+    """
+    longhands = (
+        'font-synthesis-weight', 'font-synthesis-style',
+        'font-synthesis-small-caps')
+    keyword = get_single_keyword(tokens)
+    if keyword == 'auto':
+        return {longhand: 'auto' for longhand in longhands}.items()
+    elif keyword == 'none':
+        return {longhand: 'none' for longhand in longhands}.items()
+    values = dict.fromkeys(longhands, 'auto')
+    for token in tokens:
+        keyword = get_keyword(token)
+        longhand = f'font-synthesis-{keyword}'
+        if keyword not in ('weight', 'style', 'small-caps'):
+            raise InvalidValues
+        if values[longhand] == 'none':
+            raise InvalidValues
+        values[longhand] = 'none'
+    return values.items()
 
 
 @expander('font')

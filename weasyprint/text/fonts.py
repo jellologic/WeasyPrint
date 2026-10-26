@@ -354,7 +354,51 @@ def get_font_metric_ratio(style, metric):
     return value
 
 
-def get_font_description(style, with_adjust=True):
+def get_font_real_style(style):
+    """Return the real weight, italic flag and small-caps feature support.
+
+    The values are read from the face that the given style resolves to,
+    i.e. the first available font in the family list with the requested
+    style, weight and stretch.
+
+    """
+    cache = getattr(style.font_config, 'font_styles', None)
+    if cache is None:
+        style.font_config.font_styles = cache = {}
+    key = (
+        tuple(style['font_family']), style['font_weight'],
+        style['font_style'], style['font_stretch'],
+        style['font_variation_settings'])
+    if key in cache:
+        return cache[key]
+    font_description = get_font_description(
+        style, with_adjust=False, with_synthesis=False)
+    font_map = style.font_config.font_map
+    context = pango.pango_font_map_create_context(font_map)
+    font = pango.pango_font_map_load_font(font_map, context, font_description)
+    weight, italic, small_caps = 400, False, False
+    hb_face = get_pango_font_hb_face(font)
+    data = get_hb_object_data(hb_face)
+    if data:
+        ttfont = TTFont(BytesIO(data))
+        os2 = ttfont.get('OS/2')
+        head = ttfont.get('head')
+        if os2 is not None:
+            weight = os2.usWeightClass or 400
+            italic = bool(os2.fsSelection & 1)
+        elif head is not None:
+            weight = 700 if head.macStyle & 1 else 400
+            italic = bool(head.macStyle & 2)
+        gsub = ttfont.get('GSUB')
+        if gsub is not None and gsub.table.FeatureList is not None:
+            small_caps = 'smcp' in {
+                record.FeatureTag
+                for record in gsub.table.FeatureList.FeatureRecord}
+    cache[key] = (weight, italic, small_caps)
+    return cache[key]
+
+
+def get_font_description(style, with_adjust=True, with_synthesis=True):
     """Get font description string out of given style."""
     font_description = ffi.gc(
         pango.pango_font_description_new(), pango.pango_font_description_free)
@@ -385,6 +429,25 @@ def get_font_description(style, with_adjust=True):
             f'{key}={value}' for key, value in
             style['font_variation_settings']).encode()
         pango.pango_font_description_set_variations(font_description, string)
+    if with_synthesis and (
+            style['font_synthesis_weight'] == 'none' or
+            style['font_synthesis_style'] == 'none' or
+            style['font_synthesis_small_caps'] == 'none'):
+        # font-synthesis: the resolved face is probed for its real
+        # attributes, and the description falls back to them when the
+        # requested axis would have to be synthesized.
+        real_weight, real_italic, real_small_caps = get_font_real_style(style)
+        if style['font_synthesis_weight'] == 'none':
+            pango.pango_font_description_set_weight(
+                font_description, real_weight)
+        if style['font_synthesis_style'] == 'none' and not real_italic:
+            pango.pango_font_description_set_style(
+                font_description, PANGO_STYLE['normal'])
+        if (
+                style['font_synthesis_small_caps'] == 'none' and
+                not real_small_caps):
+            pango.pango_font_description_set_variant(
+                font_description, PANGO_VARIANT['normal'])
     return font_description
 
 
