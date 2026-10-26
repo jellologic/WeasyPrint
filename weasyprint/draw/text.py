@@ -27,6 +27,10 @@ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
         if textbox.style['visibility'] != 'visible':
             return
 
+        # Rebuild the Pango layout, needed to draw the text and to get the
+        # glyph positions for skipped decoration ink.
+        textbox.pango_layout.reactivate(textbox.style)
+
         # Draw underline and overline.
         text_decoration_values = textbox.style['text_decoration_line']
         text_decoration_color = get_color(textbox.style, 'text_decoration_color')
@@ -44,7 +48,7 @@ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
                 textbox.baseline - textbox.pango_layout.ascent + thickness / 2)
             draw_text_decoration(
                 stream, textbox, offset_x, offset_y, thickness,
-                text_decoration_color)
+                text_decoration_color, skip_ink=True)
         if 'underline' in text_decoration_values:
             if textbox.style['text_underline_offset'] == 'auto':
                 underline_offset = - textbox.pango_layout.underline_position
@@ -55,11 +59,10 @@ def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
             offset_y = textbox.baseline + underline_offset + thickness / 2
             draw_text_decoration(
                 stream, textbox, offset_x, offset_y, thickness,
-                text_decoration_color)
+                text_decoration_color, skip_ink=True)
 
         # Draw text.
         x, y = textbox.position_x, textbox.position_y + textbox.baseline
-        textbox.pango_layout.reactivate(textbox.style)
 
         # Draw text shadows behind the glyphs (the first shadow in the list is
         # painted on top, so paint in reverse order).
@@ -313,9 +316,73 @@ def draw_first_line(stream, textbox, text_overflow, block_ellipsis, matrix):
     return emojis
 
 
-def draw_text_decoration(stream, textbox, offset_x, offset_y, thickness, color):
+def text_decoration_segments(textbox, offset_y, thickness):
+    """Return ``(start, width)`` pixel segments of the decoration to draw.
+
+    With ``text-decoration-skip-ink`` set to ``auto``, the ranges where
+    glyph ink would intersect the decoration band are skipped.
+
+    """
+    if textbox.style['text_decoration_skip_ink'] == 'none':
+        return [(textbox.position_x, textbox.width)]
+    first_line, _ = textbox.pango_layout.get_first_line()
+    # The decoration band, in Pango units below the baseline.
+    band_top = (
+        (offset_y - textbox.baseline) * TO_UNITS - thickness * TO_UNITS / 2)
+    skips = []
+    x_advance = 0
+    run = first_line.runs[0]
+    while run != ffi.NULL:
+        glyph_item = run.data
+        run = run.next
+        glyph_string = glyph_item.glyphs
+        glyphs_info = glyph_string.glyphs
+        pango_font = glyph_item.item.analysis.font
+        for i in range(glyph_string.num_glyphs):
+            glyph_info = glyphs_info[i]
+            start = x_advance + glyph_info.geometry.x_offset
+            x_advance += glyph_info.geometry.width
+            glyph = glyph_info.glyph
+            if not glyph or glyph & 0x10000000:  # empty or unknown glyph
+                continue
+            ink = ffi.new('PangoRectangle *')
+            pango.pango_font_get_glyph_extents(pango_font, glyph, ink, ffi.NULL)
+            if ink.y + ink.height > band_top:
+                # The glyph ink reaches into the decoration band.
+                skips.append((start + ink.x, ink.width))
+    skips.sort()
+    merged = []
+    for start, width in skips:
+        if merged and start <= merged[-1][0] + merged[-1][1]:
+            end = max(merged[-1][0] + merged[-1][1], start + width)
+            merged[-1] = (merged[-1][0], end - merged[-1][0])
+        else:
+            merged.append((start, width))
+    segments = []
+    position = 0
+    for start, width in merged:
+        start, width = start * FROM_UNITS, width * FROM_UNITS
+        if start > position:
+            segments.append((position, start - position))
+        position = start + width
+    if position < textbox.width:
+        segments.append((position, textbox.width - position))
+    return [
+        (textbox.position_x + start, width)
+        for start, width in segments]
+
+
+def draw_text_decoration(stream, textbox, offset_x, offset_y, thickness, color,
+                         skip_ink=False):
     """Draw text-decoration of ``textbox`` to a ``pdf.stream.Stream``."""
-    draw_line(
-        stream, textbox.position_x, textbox.position_y + offset_y,
-        textbox.position_x + textbox.width, textbox.position_y + offset_y,
-        thickness, textbox.style['text_decoration_style'], color, offset_x)
+    if skip_ink:
+        segments = text_decoration_segments(textbox, offset_y, thickness)
+    else:
+        segments = [(textbox.position_x, textbox.width)]
+    for segment_x, segment_width in segments:
+        if segment_width <= 0:
+            continue
+        draw_line(
+            stream, segment_x, textbox.position_y + offset_y,
+            segment_x + segment_width, textbox.position_y + offset_y,
+            thickness, textbox.style['text_decoration_style'], color, offset_x)

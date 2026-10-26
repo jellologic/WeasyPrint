@@ -1799,6 +1799,13 @@ def text_decoration_style(keyword):
 
 
 @property()
+@single_keyword
+def text_decoration_skip_ink(keyword):
+    """``text-decoration-skip-ink`` property validation."""
+    return keyword in ('none', 'auto')
+
+
+@property()
 @single_token
 def text_decoration_thickness(token):
     """``text-decoration-thickness`` property validation."""

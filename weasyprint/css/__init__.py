@@ -291,7 +291,8 @@ def text_decoration(key, value, parent_value, cascaded):
     # See https://drafts.csswg.org/css-text-decor-3/#line-decoration
     # TODO: these rules don’t follow the specification.
     text_properties = (
-        'text_decoration_color', 'text_decoration_style', 'text_decoration_thickness')
+        'text_decoration_color', 'text_decoration_style',
+        'text_decoration_thickness', 'text_decoration_skip_ink')
     if key in text_properties:
         if not cascaded:
             value = parent_value

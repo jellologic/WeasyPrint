@@ -587,6 +587,33 @@ def test_text_letter_spacing(assert_pixels):
 
 
 def test_text_underline(assert_pixels):
+    # text-decoration-skip-ink defaults to auto: the glyphs’ ink crosses
+    # the underline, so the line is entirely skipped here.
+    assert_pixels('''
+        _____________
+        _zzzzzzzzzzz_
+        _zsssssssssz_
+        _zsssssssssz_
+        _zsssssssssz_
+        _zzzzzzzzzzz_
+        _____________
+    ''', '''
+      <style>
+        @page {
+          size: 13px 7px;
+          margin: 2px;
+        }
+        body {
+          color: rgba(255, 0, 0, 0.5);
+          font-family: weasyprint;
+          font-size: 3px;
+          text-decoration: underline blue auto;
+        }
+      </style>
+      <div>abc</div>''')
+
+
+def test_text_underline_skip_ink_none(assert_pixels):
     assert_pixels('''
         _____________
         _zzzzzzzzzzz_
@@ -605,7 +632,8 @@ def test_text_underline(assert_pixels):
           color: rgba(255, 0, 0, 0.5);
           font-family: weasyprint;
           font-size: 3px;
-          text-decoration: underline blue auto;
+          text-decoration: underline blue;
+          text-decoration-skip-ink: none;
         }
       </style>
       <div>abc</div>''')
@@ -832,7 +860,33 @@ def test_text_line_through(assert_pixels):
 
 
 def test_text_multiple_text_decoration(assert_pixels):
-    # Regression test for #1621.
+    # Regression test for #1621. The underline is skipped (default
+    # text-decoration-skip-ink: auto), the line-through is not.
+    assert_pixels('''
+        _____________
+        _zzzzzzzzzzz_
+        _zsssssssssz_
+        _zBBBBBBBBBz_
+        _zsssssssssz_
+        _zzzzzzzzzzz_
+        _____________
+    ''', '''
+      <style>
+        @page {
+          size: 13px 7px;
+          margin: 2px;
+        }
+        body {
+          color: rgba(255, 0, 0, 0.5);
+          font-family: weasyprint;
+          font-size: 3px;
+          text-decoration: underline line-through blue;
+        }
+      </style>
+      <div>abc</div>''')
+
+
+def test_text_multiple_text_decoration_skip_ink_none(assert_pixels):
     assert_pixels('''
         _____________
         _zzzzzzzzzzz_
@@ -852,13 +906,43 @@ def test_text_multiple_text_decoration(assert_pixels):
           font-family: weasyprint;
           font-size: 3px;
           text-decoration: underline line-through blue;
+          text-decoration-skip-ink: none;
         }
       </style>
       <div>abc</div>''')
 
 
 def test_text_nested_text_decoration(assert_pixels):
-    # Regression test for #1621.
+    # Regression test for #1621. The underline is skipped (default
+    # text-decoration-skip-ink: auto), the line-through is not.
+    assert_pixels('''
+        _____________
+        _zzzzzzzzzzz_
+        _zsssssssssz_
+        _zsssBBBsssz_
+        _zsssssssssz_
+        _zzzzzzzzzzz_
+        _____________
+    ''', '''
+      <style>
+        @page {
+          size: 13px 7px;
+          margin: 2px;
+        }
+        body {
+          color: rgba(255, 0, 0, 0.5);
+          font-family: weasyprint;
+          font-size: 3px;
+          text-decoration: underline blue;
+        }
+        span {
+          text-decoration: line-through blue;
+        }
+      </style>
+      <div>a<span>b</span>c</div>''')
+
+
+def test_text_nested_text_decoration_skip_ink_none(assert_pixels):
     assert_pixels('''
         _____________
         _zzzzzzzzzzz_
@@ -878,6 +962,7 @@ def test_text_nested_text_decoration(assert_pixels):
           font-family: weasyprint;
           font-size: 3px;
           text-decoration: underline blue;
+          text-decoration-skip-ink: none;
         }
         span {
           text-decoration: line-through blue;
