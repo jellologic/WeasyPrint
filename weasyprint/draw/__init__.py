@@ -839,11 +839,32 @@ def draw_inline_level(stream, page, box, offset_x=0, text_overflow='clip',
 
 def draw_block_level(page, stream, blocks_and_cells):
     for block, blocks_and_cells in blocks_and_cells.items():
-        if isinstance(block, boxes.ReplacedBox):
-            with stream.marked(block, 'Figure'):
-                draw_replacedbox(stream, block)
-        elif block.children:
-            if isinstance(block.children[-1], boxes.LineBox):
-                for child in block.children:
-                    draw_inline_level(stream, page, child)
-        draw_block_level(page, stream, blocks_and_cells)
+        vertical = (
+            block.style['writing_mode'] != 'horizontal-tb' and
+            block.children and
+            isinstance(block.children[-1], boxes.LineBox))
+        if vertical:
+            # Vertical writing: the children are laid in a swapped frame
+            # (their inline axis runs along the box height). Rotate them
+            # into place: vertical-rl reads top-to-bottom, first column
+            # at the right.
+            with stream.stacked():
+                stream.transform(
+                    0, -1, -1, 0,
+                    block.position_x + block.width,
+                    block.position_y + block.height)
+                if isinstance(block, boxes.ReplacedBox):
+                    with stream.marked(block, 'Figure'):
+                        draw_replacedbox(stream, block)
+                elif block.children:
+                    for child in block.children:
+                        draw_inline_level(stream, page, child)
+        else:
+            if isinstance(block, boxes.ReplacedBox):
+                with stream.marked(block, 'Figure'):
+                    draw_replacedbox(stream, block)
+            elif block.children:
+                if isinstance(block.children[-1], boxes.LineBox):
+                    for child in block.children:
+                        draw_inline_level(stream, page, child)
+            draw_block_level(page, stream, blocks_and_cells)

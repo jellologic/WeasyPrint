@@ -906,6 +906,15 @@ def container_type(keyword):
 
 
 @property()
+@single_keyword
+def writing_mode(keyword):
+    """Validation for the ``writing-mode`` property."""
+    return keyword in (
+        'horizontal-tb', 'vertical-rl', 'vertical-lr',
+        'sideways-rl', 'sideways-lr')
+
+
+@property()
 def container_name(tokens):
     """Validation for the ``container-name`` property."""
     if len(tokens) == 1 and get_keyword(tokens[0]) == 'none':
