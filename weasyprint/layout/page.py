@@ -605,6 +605,17 @@ def make_page(context, root_box, page_type, resume_at, page_number,
     context.page_bottom = page.content_box_y() + page.height
     context.page_content_height = page.height
     context.page_content_bottoms[page_number] = context.page_bottom
+    if context.pending_top_floats:
+        # Top page floats stashed on the previous page are rendered at
+        # the top of this one.
+        context.page_top_floats[page_number] = list(
+            context.pending_top_floats)
+        context.pending_top_floats = []
+        context.page_top_reserved[page_number] = sum(
+            float_box.margin_height()
+            for float_box in context.page_top_floats[page_number])
+    root_box.position_y += context.page_top_reserved.get(page_number, 0)
+    context.page_content_tops[page_number] = page.content_box_y()
     if root_box.style['line_grid'] == 'create':
         # The root element establishes the line grid used on the whole page.
         pitch, baseline = strut(root_box.style)

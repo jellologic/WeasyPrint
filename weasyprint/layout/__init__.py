@@ -222,6 +222,14 @@ def layout_document(html, root_box, context, max_loops=8):
             bottom_edge -= float_box.margin_height()
         if bottom_floats:
             page.children += tuple(bottom_floats)
+        # Place the top page floats reserved for this page.
+        top_edge = context.page_content_tops.get(i + 1)
+        top_floats = context.page_top_floats.get(i + 1, [])
+        for float_box in top_floats:
+            float_box.translate(dy=top_edge - float_box.position_y)
+            top_edge += float_box.margin_height()
+        if top_floats:
+            page.children += tuple(top_floats)
         layout_backgrounds(page, context.get_image_from_uri)
         yield page
 
@@ -259,6 +267,10 @@ class LayoutContext:
         self.current_page_number = None
         self.page_bottom_floats = {}
         self.page_content_bottoms = {}
+        self.pending_top_floats = []
+        self.page_top_floats = {}
+        self.page_top_reserved = {}
+        self.page_content_tops = {}
 
         # Cache
         self.tables = {}

@@ -281,9 +281,21 @@ def _out_of_flow_layout(context, box, index, child, new_children,
         if (
                 child.style['float'] == 'top' and
                 child.style['float_reference'] in ('page', 'column')):
-            LOGGER.warning(
-                '"float: top" is not supported yet; rendering the box as '
-                f'a regular float in element {child.element_tag}')
+            placed = any(
+                float_box.element is child.element
+                for float_box in context.page_top_floats.get(
+                    context.current_page_number, []))
+            if placed:
+                # Already placed at the top of this page: drop the
+                # re-laid copy from the flow.
+                remove_placeholders(
+                    context, [new_child], absolute_boxes, fixed_boxes)
+            else:
+                # Render the float at the top of the next page.
+                context.pending_top_floats.append(new_child)
+                resume_at = {index: None}
+                stop = True
+            return stop, resume_at, None, out_of_flow_resume_at
         elif (
                 child.style['float'] == 'bottom' and
                 child.style['float_reference'] in ('page', 'column')):
@@ -304,12 +316,6 @@ def _out_of_flow_layout(context, box, index, child, new_children,
                     context, [new_child], absolute_boxes, fixed_boxes)
                 resume_at = {index: None}
                 stop = True
-            else:
-                # Top page floats are rendered at the top of the next page.
-                context.pending_top_floats.append(new_child)
-                resume_at = {index: None}
-                stop = True
-            return stop, resume_at, None, out_of_flow_resume_at
 
         # Check that child doesn’t overflow page.
         page_overflow = context.overflows_page(

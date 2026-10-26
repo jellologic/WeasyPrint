@@ -1,21 +1,29 @@
-"""Test page floats (``float: top`` / ``bottom`` with ``float-reference``)."""
-from ..testing_utils import assert_no_logs, capture_logs, render_pages
+"""Test the ``float: top`` / ``float: bottom`` page floats."""
+from ..testing_utils import assert_no_logs, render_pages
 
 
 def find_box(page, tag):
     return next(
         box for box in page.descendants()
-        if box.element_tag == tag and hasattr(box, 'margin_height'))
+        if getattr(box, 'element_tag', '') == tag
+        and hasattr(box, 'margin_height'))
+
+
+def find_p(page, text):
+    return next(
+        box for box in page.descendants()
+        if getattr(box, 'element_tag', '') == 'p'
+        and any(
+            type(child).__name__ == 'TextBox' and text in child.text
+            for child in box.descendants()))
 
 
 @assert_no_logs
 def test_page_float_bottom():
-    # A "float: bottom" box is placed at the bottom of the page content
-    # area, below the other content.
     page, = render_pages('''
       <style>
-        @page { size: 6in 4in; margin: 0.5in }
-        body { font-family: weasyprint; font-size: 12pt }
+        @page { size: 200px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 10pt }
         section { height: 1in; margin: 0 }
         aside { float: bottom; float-reference: page;
                 margin: 0; height: 0.5in }
@@ -33,12 +41,10 @@ def test_page_float_bottom():
 
 @assert_no_logs
 def test_page_float_bottom_defer():
-    # When there is not enough room at the bottom of the page, the whole
-    # float is deferred to the next page.
     page_1, page_2 = render_pages('''
       <style>
-        @page { size: 6in 4in; margin: 0.5in }
-        body { font-family: weasyprint; font-size: 12pt }
+        @page { size: 200px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 10pt }
         section { height: 2.8in; margin: 0 }
         aside { float: bottom; float-reference: page;
                 margin: 0; height: 0.6in }
@@ -53,26 +59,33 @@ def test_page_float_bottom_defer():
     assert find_box(page_1, 'section')
     assert not [
         box for box in page_1.descendants()
-        if box.element_tag == 'aside']
+        if getattr(box, 'element_tag', '') == 'aside']
 
 
 @assert_no_logs
-def test_page_float_top_unsupported():
-    # "float: top" is not supported yet: a warning is logged and the box
-    # is rendered as a regular float.
-    with capture_logs() as logs:
-        page, = render_pages('''
+def test_page_float_top_next_page():
+    # A "float: top" box is placed at the top of the next page, above
+    # the content that follows it in the document.
+    page_1, page_2 = render_pages('''
       <style>
-        @page { size: 6in 4in; margin: 0.5in }
-        body { font-family: weasyprint; font-size: 12pt }
-        section { height: 1in; margin: 0 }
-        header { float: top; float-reference: page;
-                 margin: 0; height: 0.5in }
+        @page { size: 200px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 10pt }
+        p { margin: 0 }
+        div { float: top; float-reference: page; margin: 0; height: 40px }
       </style>
-      <section>first</section>
-      <header>head</header>
-      <section>second</section>
+      <p>first</p>
+      <div></div>
+      <p>second</p>
     ''')
-    assert any('"float: top"' in log for log in logs)
-    assert find_box(page, 'header')
-    assert find_box(page, 'section')
+    assert len(pages_list(page_1, page_2)) == 2
+    header = find_box(page_2, 'div')
+    top = page_2.content_box_y()
+    assert abs(header.position_y - top) < 0.01
+    second = find_p(page_2, 'second')
+    assert abs(second.position_y - (top + 40)) < 0.01
+    first = find_p(page_1, 'first')
+    assert first.position_y < 100
+
+
+def pages_list(page_1, page_2):
+    return [page_1, page_2]
