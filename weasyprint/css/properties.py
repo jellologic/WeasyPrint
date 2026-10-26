@@ -42,6 +42,8 @@ INITIAL_VALUES = {
     'row_widows': 1,
     'shape_outside': 'none',
     'shape_margin': ZERO_PIXELS,
+    'container_type': 'normal',
+    'container_name': 'none',
     'float_reference': 'inline',
     'left': 'auto',
     'line_height': 'normal',

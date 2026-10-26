@@ -317,8 +317,8 @@ class CSS:
     def __init__(self, guess=None, filename=None, url=None, file_obj=None, string=None,
                  encoding=None, base_url=None, url_fetcher=None, _check_mime_type=False,
                  media_type='print', font_config=None, counter_style=None,
-                 color_profiles=None, matcher=None, page_rules=None, layers=None,
-                 layer=None):
+                 color_profiles=None, matcher=None, page_rules=None,
+                 container_rules=None, layers=None, layer=None):
         PROGRESS_LOGGER.info(
             'Step 2 - Fetching and parsing CSS - %s',
             filename or url or getattr(file_obj, 'name', 'CSS string'))
@@ -340,13 +340,14 @@ class CSS:
         self.base_url = base_url
         self.matcher = matcher or cssselect2.Matcher()
         self.page_rules = [] if page_rules is None else page_rules
+        self.container_rules = [] if container_rules is None else container_rules
         self.layers = [] if layers is None else layers
         counter_style = {} if counter_style is None else counter_style
         color_profiles = {} if color_profiles is None else color_profiles
         preprocess_stylesheet(
             media_type, base_url, stylesheet, url_fetcher, self.matcher,
-            self.page_rules, self.layers, font_config, counter_style, color_profiles,
-            layer=layer)
+            self.page_rules, self.container_rules, self.layers, font_config,
+            counter_style, color_profiles, layer=layer)
 
 
 class Attachment:

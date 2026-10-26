@@ -898,6 +898,27 @@ def shape_margin(token):
     return get_length(token, negative=False, percentage=True)
 
 
+@property()
+@single_keyword
+def container_type(keyword):
+    """Validation for the ``container-type`` property."""
+    return keyword in ('normal', 'size', 'inline-size')
+
+
+@property()
+def container_name(tokens):
+    """Validation for the ``container-name`` property."""
+    if len(tokens) == 1 and get_keyword(tokens[0]) == 'none':
+        return 'none'
+    names = []
+    for token in tokens:
+        keyword = get_keyword(token)
+        if token.type != 'ident' or keyword in ('none', 'default'):
+            return
+        names.append(keyword)
+    return ' '.join(names)
+
+
 @property(wants_base_url=True)
 def content(tokens, base_url):
     """``content`` property validation."""

@@ -155,6 +155,7 @@ class Document:
                               options):
         target_collector = TargetCollector()
         page_rules = []
+        container_rules = []
         layers = []
         user_stylesheets = []
         cache = options['cache']
@@ -171,8 +172,8 @@ class Document:
             user_stylesheets.append(css)
         style_for = get_all_computed_styles(
             html, user_stylesheets, options['presentational_hints'], font_config,
-            counter_style, color_profiles, page_rules, layers, target_collector,
-            options['pdf_forms'])
+            counter_style, color_profiles, page_rules, container_rules, layers,
+            target_collector, options['pdf_forms'])
         get_image_from_uri = functools.partial(
             original_get_image_from_uri, cache=cache,
             url_fetcher=html.url_fetcher, options=options)

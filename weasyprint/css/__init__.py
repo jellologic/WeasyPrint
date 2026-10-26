@@ -39,8 +39,8 @@ from .validation.properties import validate_non_shorthand
 
 from .tokens import (  # isort:skip
     E, MINUS_INFINITY, NAN, PI, PLUS_INFINITY, InvalidValues, Pending, PercentageInMath,
-    RelativeLengthInMath, get_angle, get_url, remove_whitespace, split_on_comma,
-    tokenize)
+    RelativeLengthInMath, get_angle, get_length, get_url, remove_whitespace,
+    split_on_comma, tokenize)
 
 # Reject anything not in here:
 PSEUDO_ELEMENTS = (
@@ -54,7 +54,7 @@ PageSelectorType = namedtuple(
 class StyleFor:
     """Convenience function to get the computed styles for an element."""
     def __init__(self, html, sheets, presentational_hints, font_config,
-                 target_collector):
+                 target_collector, container_rules=None):
         # keys: (element, pseudo_element_type)
         #    element: an ElementTree Element or the '@page' string
         #    pseudo_element_type: a string such as 'first' (for @page) or
@@ -84,6 +84,19 @@ class StyleFor:
         self._sheets = sheets
         self.font_config = font_config
 
+        # Container queries: (name, (feature, length), selectors, declarations)
+        # rules, applied to elements whose nearest matching inline-size
+        # container satisfies the condition.
+        self._container_rules = [
+            rule
+            for sheet, _, _ in sheets
+            for rule in getattr(sheet, 'container_rules', ())] + (
+            container_rules or [])
+        # The page content width is computed lazily: the page style needs
+        # the root element's cascaded styles.
+        self._page_content_width = None
+        self._page_width_done = not self._container_rules
+
         PROGRESS_LOGGER.info('Step 3 - Applying CSS')
         layer_order = inf
         for specificity, element, declarations, base_url in find_style_attributes(
@@ -102,7 +115,46 @@ class StyleFor:
         # computed styles before their children, for inheritance.
 
         # Iterate on all elements, even if there is no cascaded style for them.
+        containers = {}  # element -> (name, content width)
+        widths = {}      # element -> content width
         for element in html.wrapper_element.iter_subtree():
+            parent_element = element.parent
+            if self._container_rules and containers:
+                parent_width = (
+                    widths.get(parent_element.etree_element)
+                    if parent_element is not None else None)
+                # Apply container rules against the nearest matching
+                # ancestor container.
+                for name, (feature, length), selectors, declarations in (
+                        self._container_rules):
+                    ancestor = element.parent
+                    container_width = None
+                    while ancestor is not None:
+                        entry = containers.get(ancestor.etree_element)
+                        if entry is not None and (
+                                name is None or name == entry[0]):
+                            container_width = entry[1]
+                            break
+                        ancestor = ancestor.parent
+                    if container_width is None:
+                        continue
+                    if feature == 'min-width':
+                        if container_width < length:
+                            continue
+                    elif container_width > length:
+                        continue
+                    style = cascaded_styles.setdefault(
+                        (element.etree_element, None), {})
+                    for selector in selectors:
+                        if not selector.test(element):
+                            continue
+                        for prop, values, importance in declarations:
+                            precedence = declaration_precedence(
+                                'author', importance)
+                            weight = (precedence, inf, selector.specificity)
+                            old_weight = style.get(prop, (None, None))[1]
+                            if old_weight is None or old_weight <= weight:
+                                style[prop] = values, weight
             for sheet, origin, sheet_specificity in sheets:
                 # Add declarations for matched elements
                 for selector in sheet.matcher.match(element):
@@ -121,6 +173,19 @@ class StyleFor:
             self.set_computed_styles(
                 element.etree_element, root=html.etree_element, parent=parent,
                 base_url=html.base_url, target_collector=target_collector)
+            if self._container_rules:
+                style = self._computed_styles.get((element.etree_element, None))
+                if style is not None:
+                    if parent_element is None:
+                        parent_width = self._get_page_content_width(html)
+                    else:
+                        parent_width = widths.get(parent_element.etree_element)
+                    width = self._element_content_width(style, parent_width)
+                    widths[element.etree_element] = width
+                    if style['container_type'] == 'inline-size':
+                        name = style['container_name']
+                        containers[element.etree_element] = (
+                            None if name == 'none' else name, width)
 
         # Then computed styles for pseudo elements, in any order.
         # Pseudo-elements inherit from their associated element so they come
@@ -141,6 +206,98 @@ class StyleFor:
         # Clear the cascaded styles, we don't need them anymore. Keep the
         # dictionary, it is used later for page margins.
         self._cascaded_styles.clear()
+
+    def _get_page_content_width(self, html):
+        if not self._page_width_done:
+            self._page_width_done = True
+            self._page_content_width = self._compute_page_content_width(html)
+        return self._page_content_width
+
+    def _compute_page_content_width(self, html):
+        """Return the page content width, or None when not determinable."""
+        from ..layout.page import PageType, set_page_type_computed_styles
+        page_type = PageType('right', False, '', 1, (), 'ltr')
+        set_page_type_computed_styles(page_type, html, self)
+        style = self._computed_styles.get((page_type, None))
+        if style is None:
+            return None
+        size = style['size']
+        if size in (None, 'auto'):
+            return None
+        width = size[0]
+        for side in ('left', 'right'):
+            margin = style[f'margin_{side}']
+            if getattr(margin, 'unit', None) == '%':
+                width -= margin.value / 100 * size[0]
+            elif isinstance(margin, (int, float)):
+                width -= margin
+        return width
+
+    def _resolve_width(self, value, reference):
+        """Resolve a width-like computed value, None when undeterminable."""
+        if value == 'auto':
+            return reference
+        unit = getattr(value, 'unit', None)
+        if unit == '%':
+            if reference is None:
+                return None
+            return value.value / 100 * reference
+        if isinstance(value, (int, float)):
+            return float(value)
+        if unit is not None:
+            # A Dimension with an absolute unit.
+            return value.value
+        try:
+            # Computed constants that are not plain numbers, e.g.
+            # ZERO_PIXELS-like sentinels.
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _element_content_width(self, style, parent_width):
+        """Return the element's content width, None when not determinable.
+
+        Only the common top-down cases are handled: block-level boxes with
+        definite or filling widths. Floats, inline-level boxes, tables and
+        out-of-flow boxes are unknown.
+
+        """
+        if (
+                parent_width is None or
+                style['position'] in ('absolute', 'fixed') or
+                style['float'] != 'none'):
+            return None
+        display = style['display']
+        if display in (('inline',), ('inline-block',)) or any(
+                'table' in value for value in display):
+            return None
+
+        def resolve(value):
+            return self._resolve_width(value, parent_width)
+
+        if style['width'] == 'auto':
+            # The box fills the containing block.
+            width = parent_width
+            for side in ('left', 'right'):
+                margin = style[f'margin_{side}']
+                margin = 0 if margin == 'auto' else resolve(margin)
+                padding = resolve(style[f'padding_{side}'])
+                border = resolve(style[f'border_{side}_width'])
+                if None in (margin, padding, border):
+                    return None
+                width -= margin + padding + border
+        else:
+            width = resolve(style['width'])
+            if width is None:
+                return None
+            if style['box_sizing'] == 'border-box':
+                for side in ('left', 'right'):
+                    padding = resolve(style[f'padding_{side}'])
+                    border = resolve(style[f'border_{side}_width'])
+                    if None in (padding, border):
+                        return None
+                    width -= padding + border
+        return max(width, 0)
 
     def __call__(self, element, pseudo_type=None):
         if style := self._computed_styles.get((element, pseudo_type)):
@@ -306,7 +463,8 @@ def text_decoration(key, value, parent_value, cascaded):
 
 
 def find_stylesheets(wrapper_element, device_media_type, url_fetcher, base_url,
-                     font_config, counter_style, color_profiles, page_rules, layers):
+                     font_config, counter_style, color_profiles, page_rules,
+                     container_rules=None, layers=None):
     """Yield the stylesheets in ``element_tree``.
 
     The output order is the same as the source order.
@@ -334,7 +492,8 @@ def find_stylesheets(wrapper_element, device_media_type, url_fetcher, base_url,
                 string=content, base_url=base_url,
                 url_fetcher=url_fetcher, media_type=device_media_type,
                 font_config=font_config, counter_style=counter_style,
-                page_rules=page_rules, color_profiles=color_profiles, layers=layers)
+                page_rules=page_rules, container_rules=container_rules,
+                color_profiles=color_profiles, layers=layers)
             yield css
         elif element.tag == 'link' and element.get('href'):
             if not element_has_link_type(element, 'stylesheet') or \
@@ -347,7 +506,8 @@ def find_stylesheets(wrapper_element, device_media_type, url_fetcher, base_url,
                         url=href, url_fetcher=url_fetcher, media_type=device_media_type,
                         font_config=font_config, counter_style=counter_style,
                         color_profiles=color_profiles, page_rules=page_rules,
-                        layers=layers, _check_mime_type=True)
+                        container_rules=container_rules, layers=layers,
+                        _check_mime_type=True)
                 except URLFetchingError as exception:
                     LOGGER.error('Failed to load stylesheet at %s: %s', href, exception)
                     LOGGER.debug('Error while loading stylesheet:', exc_info=exception)
@@ -1598,10 +1758,35 @@ def _evaluate_supports_condition(prelude, base_url):
     return result
 
 
+def parse_container_condition(block):
+    """Parse a ``@container`` width condition.
+
+    Return ``(feature, length)`` with feature in min-width / max-width and
+    the length in pixels, or None when the condition is unsupported.
+
+    """
+    tokens = [
+        token for token in block.content
+        if token.type not in ('whitespace', 'comment')]
+    if len(tokens) != 3 or tokens[0].type != 'ident':
+        return
+    if tokens[1].type != 'literal' or tokens[1].value != ':':
+        return
+    feature = tokens[0].lower_value
+    if feature not in ('min-width', 'max-width'):
+        return
+    value = get_length(tokens[2], negative=False)
+    if value is None or getattr(value, 'unit', None) == '%':
+        return
+    return (feature, value.value if hasattr(value, 'value') else value)
+
+
 def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fetcher,
-                          matcher, page_rules, layers, font_config, counter_style,
-                          color_profiles, ignore_imports=False, layer=None):
+                          matcher, page_rules, container_rules=None, layers=None,
+                          font_config=None, counter_style=None,
+                          color_profiles=None, ignore_imports=False, layer=None):
     """Do what can be done early on stylesheet, before being in a document."""
+    container_rules = [] if container_rules is None else container_rules
     for rule in stylesheet_rules:
         if getattr(rule, 'content', None) is None:
             if rule.type == 'error':
@@ -1730,8 +1915,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             content_rules = tinycss2.parse_rule_list(rule.content)
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
-                page_rules, layers, font_config, counter_style, color_profiles,
-                ignore_imports=True)
+                page_rules, container_rules, layers, font_config, counter_style,
+                color_profiles, ignore_imports=True)
 
         elif rule.type == 'at-rule' and rule.lower_at_keyword == 'supports':
             supported = _evaluate_supports_condition(rule.prelude, base_url)
@@ -1748,8 +1933,47 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             content_rules = tinycss2.parse_rule_list(rule.content)
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
-                page_rules, layers, font_config, counter_style, color_profiles,
-                ignore_imports=True, layer=layer)
+                page_rules, container_rules, layers, font_config, counter_style,
+                color_profiles, ignore_imports=True, layer=layer)
+
+        elif rule.type == 'at-rule' and rule.lower_at_keyword == 'container':
+            prelude = [
+                token for token in rule.prelude
+                if token.type not in ('whitespace', 'comment')]
+            name = None
+            if len(prelude) == 2 and prelude[0].type == 'ident':
+                name, condition_block = prelude[0].lower_value, prelude[1]
+            elif len(prelude) == 1:
+                condition_block = prelude[0]
+            else:
+                condition_block = None
+            condition = (
+                parse_container_condition(condition_block)
+                if condition_block is not None and condition_block.type == '() block'
+                else None)
+            if condition is None:
+                LOGGER.warning(
+                    'Unsupported @container condition %r, '
+                    'the whole @container rule was ignored at %d:%d.',
+                    tinycss2.serialize(rule.prelude),
+                    rule.source_line, rule.source_column)
+                continue
+            content_rules = tinycss2.parse_rule_list(rule.content)
+            for inner in content_rules:
+                if inner.type != 'qualified-rule':
+                    continue
+                selectors_declarations = list(preprocess_declarations(
+                    base_url, tinycss2.parse_blocks_contents(inner.content),
+                    inner.prelude))
+                if not selectors_declarations:
+                    continue
+                selectors_declarations = groupby(
+                    selectors_declarations, key=lambda x: x[0])
+                for selectors, all_declarations in selectors_declarations:
+                    declarations = [
+                        declaration[1] for declaration in all_declarations]
+                    container_rules.append(
+                        (name, condition, tuple(selectors), declarations))
 
         elif rule.type == 'at-rule' and rule.lower_at_keyword == 'page':
             data = parse_page_selectors(rule)
@@ -1963,8 +2187,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
             content_rules = tinycss2.parse_rule_list(rule.content)
             preprocess_stylesheet(
                 device_media_type, base_url, content_rules, url_fetcher, matcher,
-                page_rules, layers, font_config, counter_style, color_profiles,
-                ignore_imports=True, layer=new_layer)
+                page_rules, container_rules, layers, font_config, counter_style,
+                color_profiles, ignore_imports=True, layer=new_layer)
 
         else:
             LOGGER.warning(
@@ -1974,8 +2198,8 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
 
 def get_all_computed_styles(html, user_stylesheets=None, presentational_hints=False,
                             font_config=None, counter_style=None, color_profiles=None,
-                            page_rules=None, layers=None, target_collector=None,
-                            forms=False):
+                            page_rules=None, container_rules=None, layers=None,
+                            target_collector=None, forms=False):
     """Compute all the computed styles of all elements in ``html`` document.
 
     Do everything from finding author stylesheets to parsing and applying them.
@@ -2001,9 +2225,11 @@ def get_all_computed_styles(html, user_stylesheets=None, presentational_hints=Fa
     for sheet in find_stylesheets(
             html.wrapper_element, html.media_type, html.url_fetcher,
             html.base_url, font_config, counter_style, color_profiles, page_rules,
-            layers):
+            container_rules, layers):
         sheets.append((sheet, 'author', None))
     for sheet in (user_stylesheets or []):
         sheets.append((sheet, 'user', None))
 
-    return StyleFor(html, sheets, presentational_hints, font_config, target_collector)
+    return StyleFor(
+        html, sheets, presentational_hints, font_config, target_collector,
+        container_rules)
