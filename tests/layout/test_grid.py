@@ -4,7 +4,7 @@ from math import isclose
 
 import pytest
 
-from ..testing_utils import assert_no_logs, capture_logs, render_pages
+from ..testing_utils import assert_no_logs, render_pages
 
 
 @assert_no_logs
@@ -1964,11 +1964,10 @@ def test_grid_negative_line_numbers():
 
 
 @assert_no_logs
-def test_grid_subgrid_fallback():
-    # Unsupported subgrid behaves as none: the items stay readable,
-    # stacked in one full-width column.
-    with capture_logs() as logs:
-        page, = render_pages('''
+def test_grid_subgrid_two_items():
+    # Two items in a four-column subgrid land in the first two parent
+    # columns.
+    page, = render_pages('''
       <style>
         @page { size: 400px 100px; margin: 0 }
         body { margin: 0 }
@@ -1981,7 +1980,6 @@ def test_grid_subgrid_fallback():
         <div class="s"><div>a</div><div>b</div></div>
       </article>
     ''')
-    assert any('Subgrids are unsupported' in log for log in logs)
     html, = page.children
     body, = html.children
     article, = body.children
@@ -1989,5 +1987,60 @@ def test_grid_subgrid_fallback():
     assert nested.position_x == article.position_x == 0
     assert nested.width == article.width
     a, b = nested.children
-    assert a.width == b.width == nested.width
-    assert b.position_y > a.position_y
+    track = (400 - 3 * 15) / 4
+    assert a.position_x == 0
+    assert a.width == track
+    assert b.position_x == track + 15
+    assert b.width == track
+
+
+SUBGRID_HTML = '''
+  <style>
+    @page { size: 400px 100px; margin: 0 }
+    body { margin: 0 }
+    article { display: grid; grid-template-columns: repeat(4, 1fr);
+              gap: 0 15px }
+    div.s { grid-column: %s; display: grid; gap: 0; %s }
+  </style>
+  <article><div class="s"><div>a</div><div>b</div><div>c</div><div>d</div>
+  </div></article>
+'''
+
+
+def grid_items(page):
+    """Return the ``(x, width)`` of the subgrid’s items."""
+    items = []
+    for box in page.descendants():
+        element = getattr(box, 'element', None)
+        if element is not None and box.element_tag == 'div' and (
+                type(box).__name__ == 'BlockBox'):
+            items.append((round(box.position_x, 1), round(box.width, 1)))
+    return items
+
+
+@assert_no_logs
+def test_grid_subgrid():
+    # A subgrid child places its items in the parent grid’s spanned
+    # columns, exactly like an explicit repeat of the same tracks.
+    subgrid, = render_pages(
+        SUBGRID_HTML % ('1 / -1', 'grid-template-columns: subgrid'))
+    explicit, = render_pages(
+        SUBGRID_HTML % (
+            '1 / -1', 'grid-template-columns: repeat(4, 1fr); gap: 0 15px'))
+    assert grid_items(subgrid) == grid_items(explicit)
+    track = (400 - 3 * 15) / 4
+    assert grid_items(subgrid) == [
+        (round(start, 1), round(track, 1))
+        for start in (0, track + 15, 2 * (track + 15), 3 * (track + 15))]
+
+
+@assert_no_logs
+def test_grid_subgrid_partial_span():
+    # A subgrid spanning the two middle columns uses those tracks.
+    subgrid, = render_pages(
+        SUBGRID_HTML % ('2 / 4', 'grid-template-columns: subgrid'))
+    explicit, = render_pages(
+        SUBGRID_HTML % (
+            '2 / 4', 'grid-template-columns: repeat(2, 1fr); gap: 0 15px'))
+    # Four items in two tracks: two rows of two, like the explicit grid.
+    assert grid_items(subgrid) == grid_items(explicit)
