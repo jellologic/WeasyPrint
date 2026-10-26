@@ -12,12 +12,14 @@ from .descriptors import expand_font_variant
 from ..tokens import (  # isort:skip
     InvalidValues, Pending, get_keyword, get_single_keyword, split_on_comma)
 from .properties import (  # isort:skip
+    align_content, align_items, align_self,
     background_attachment, background_image, background_position, background_repeat,
     background_size, block_ellipsis, border_image_source, border_image_slice,
     border_image_width, border_image_outset, border_image_repeat, border_style,
     border_width, box, column_count, column_width, flex_basis, flex_direction,
     flex_grow_shrink, flex_wrap, font_family, font_size, font_stretch, font_style,
-    font_variant_caps, font_weight, gap, grid_line, grid_template, line_height,
+    font_variant_caps, font_weight, gap, grid_line, grid_template,
+    justify_content, justify_items, justify_self, line_height,
     list_style_image, list_style_position, list_style_type, mask_border_mode,
     other_colors, overflow, overflow_wrap, text_decoration_thickness,
     validate_non_shorthand)
@@ -1078,28 +1080,55 @@ def expand_legacy_row_gap(tokens, name):
     yield 'row-gap', tokens
 
 
-@expander('place-content')
-@generic_expander('align-content', 'justify-content')
-def expand_place_content(tokens, name):
-    """Expand the ``place-content`` property."""
-    # TODO
-    raise InvalidValues
+def _split_alignment_pair(tokens, validator):
+    """Split ``<align> <justify>`` tokens, greedy on the first value."""
+    if not tokens:
+        return None
+    sizes = [len(tokens)]
+    if len(tokens) >= 2:
+        sizes += [2, 1]
+    for size in sizes:
+        first, rest = tokens[:size], tokens[size:]
+        if validator(list(first)) is not None:
+            return first, rest
+    return None
 
 
 @expander('place-items')
 @generic_expander('align-items', 'justify-items')
 def expand_place_items(tokens, name):
-    """Expand the ``place-items`` property."""
-    # TODO
-    raise InvalidValues
+    """Expand the ``place-items`` shorthand property."""
+    split = _split_alignment_pair(tokens, align_items)
+    if split is None:
+        raise InvalidValues(f'invalid {name} shorthand')
+    first, rest = split
+    yield 'align-items', list(first)
+    yield 'justify-items', list(rest) if rest else list(first)
+
+
+@expander('place-content')
+@generic_expander('align-content', 'justify-content')
+def expand_place_content(tokens, name):
+    """Expand the ``place-content`` shorthand property."""
+    split = _split_alignment_pair(tokens, align_content)
+    if split is None:
+        raise InvalidValues(f'invalid {name} shorthand')
+    first, rest = split
+    yield 'align-content', list(first)
+    yield 'justify-content', list(rest) if rest else list(first)
 
 
 @expander('place-self')
 @generic_expander('align-self', 'justify-self')
 def expand_place_self(tokens, name):
-    """Expand the ``place-self`` property."""
-    # TODO
-    raise InvalidValues
+    """Expand the ``place-self`` shorthand property."""
+    split = _split_alignment_pair(tokens, align_self)
+    if split is None:
+        raise InvalidValues(f'invalid {name} shorthand')
+    first, rest = split
+    yield 'align-self', list(first)
+    yield 'justify-self', list(rest) if rest else list(first)
+
 
 
 @expander('line-clamp')
