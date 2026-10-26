@@ -210,6 +210,8 @@ INITIAL_VALUES = {
     'initial_letter': 'normal',
     'text_align_all': 'start',
     'text_align_last': 'auto',
+    'text_box_trim': 'none',
+    'text_box_edge': ('text', 'alphabetic'),
     'text_indent': ZERO_PIXELS,
     'text_shadow': 'none',
     'text_transform': 'none',

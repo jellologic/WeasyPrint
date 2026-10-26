@@ -2600,6 +2600,25 @@ def initial_letter(tokens):
         return tuple(values)
 
 
+@property()
+@single_keyword
+def text_box_trim(keyword):
+    """Validation for the ``text-box-trim`` property."""
+    return keyword in ('none', 'trim-start', 'trim-end', 'trim-both')
+
+
+@property(unstable=True)
+def text_box_edge(tokens):
+    """Validation for the ``text-box-edge`` property."""
+    if 1 <= len(tokens) <= 2:
+        keywords = [get_keyword(token) for token in tokens]
+        if all(keyword in ('leading', 'text', 'cap', 'ex', 'alphabetic')
+                for keyword in keywords):
+            if len(tokens) == 1:
+                return (keywords[0], keywords[0])
+            return tuple(keywords)
+
+
 @property(proprietary=True)
 @single_token
 def lang(token):

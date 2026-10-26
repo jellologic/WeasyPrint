@@ -5,6 +5,7 @@ from math import ceil, inf
 
 from ..css.properties import Dimension
 from ..formatting_structure import boxes
+from ..text.fonts import get_font_metric_ratio
 from .absolute import AbsolutePlaceholder, absolute_layout
 from .column import columns_layout
 from .flex import flex_layout
@@ -799,6 +800,60 @@ def _in_flow_layout(context, box, index, child, new_children, page_is_empty,
         new_children, max_lines)
 
 
+def text_box_trim_offset(style, line, edge):
+    """Return the space to remove between a block edge and a line text edge.
+
+    ``edge`` is the start or end ``text-box-edge`` value, ``line`` the
+    first or last laid-out line of the block.
+
+    """
+    baseline = line.baseline
+    if edge == 'alphabetic':
+        if baseline is None:
+            return 0
+        # Start edge: everything above the baseline. End edge: handled by
+        # the caller with the space below the baseline instead.
+        return baseline
+    if edge in ('cap', 'ex'):
+        if baseline is None:
+            return 0
+        ratio = get_font_metric_ratio(style, 'cap-height' if edge == 'cap'
+                                      else 'ex-height')
+        if ratio:
+            return max(baseline - ratio * style['font_size'], 0)
+    # 'leading' and the 'text' edges are not trimmed yet.
+    return 0
+
+
+def apply_text_box_trim(box, new_children, position_y, is_start, is_end):
+    """Apply ``text-box-trim`` to the laid-out lines of ``box``.
+
+    Return the new bottom ``position_y`` of the content, with the children
+    shifted up when the start is trimmed.
+
+    """
+    trim = box.style['text_box_trim']
+    lines = [
+        child for child in new_children if isinstance(child, boxes.LineBox)]
+    if not lines:
+        return position_y
+    trim_start = is_start and trim in ('trim-start', 'trim-both')
+    trim_end = is_end and trim in ('trim-end', 'trim-both')
+    start_edge, end_edge = box.style['text_box_edge']
+    if trim_start:
+        offset = text_box_trim_offset(box.style, lines[0], start_edge)
+        if offset:
+            for child in new_children:
+                child.translate(dy=-offset)
+            position_y -= offset
+    if trim_end and end_edge == 'alphabetic':
+        line = lines[-1]
+        if line.baseline is not None:
+            # End edge: trim everything below the baseline.
+            position_y -= line.height - line.baseline
+    return position_y
+
+
 def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty,
                            absolute_boxes, fixed_boxes, adjoining_margins,
                            first_letter_style, first_line_style, discard, max_lines):
@@ -1019,6 +1074,12 @@ def block_container_layout(context, box, bottom_space, skip_stack, page_is_empty
         last_child = new_children[-1]
         if isinstance(last_child, boxes.LineBox):
             last_child.block_ellipsis = box.style['block_ellipsis']
+
+    # text-box-trim: remove the leading between the block edges and the
+    # first/last line text edges.
+    if box.style['text_box_trim'] != 'none' and new_children:
+        position_y = apply_text_box_trim(
+            box, new_children, position_y, is_start, resume_at is None)
 
     new_box = box.copy_with_children(new_children)
     new_box.remove_decoration(
