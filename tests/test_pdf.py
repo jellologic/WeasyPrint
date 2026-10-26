@@ -962,3 +962,29 @@ def test_debug_variant():
         pdf_variant='debug', uncompressed_pdf=True)
     assert b'/T (lipsum)' in pdf
     assert b'/Dest (lipsum)' in pdf
+
+
+@assert_no_logs
+def test_pdf_forms_gsub_to_unicode():
+    # Glyphs shaped through GSUB substitutions (here the "liga" ligature of
+    # the WeasyPrint test font) must keep their ToUnicode mapping when the
+    # font is also used in form fields and therefore embedded in full.
+    document = FakeHTML(string='''
+      <style>
+        body { font-family: weasyprint }
+      </style>
+      liga<input type="text" name="a">
+    ''').render(pdf_forms=True)
+    pdf = document.write_pdf(pdf_forms=True, uncompressed_pdf=True)
+    mappings = [
+        (glyph_id, text)
+        for font in document.fonts.values()
+        for glyph_id, text in font.to_unicode.items()]
+    assert mappings  # glyphs were recorded while drawing
+    # The font’s liga feature shapes "liga" as a single ligature glyph,
+    # giving a many-to-one mapping that cmap alone can’t provide.
+    assert any(len(text) > 1 for _, text in mappings)
+    for glyph_id, text in mappings:
+        unicode_hex = ''.join(
+            letter.encode('utf-16-be').hex() for letter in text)
+        assert f'<{glyph_id:04x}> <{unicode_hex}>'.encode() in pdf

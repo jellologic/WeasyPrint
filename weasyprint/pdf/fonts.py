@@ -346,6 +346,11 @@ def build_fonts_dictionary(pdf, fonts, compress, subset, options):
             font_widths, to_unicode = {}, {}
             for i, glyph in enumerate(ttfont.getGlyphSet().values()):
                 font_widths[i] = glyph.width * 1000 / font.upem
+            # Keep the Unicode values recorded when drawing the text:
+            # glyphs reached through GSUB substitutions (ligatures,
+            # tabular figures, contextual alternates) don’t exist in
+            # the cmap table.
+            to_unicode.update(font.to_unicode)
             for letter, key in ttfont.getBestCmap().items():
                 glyph_id = ttfont.getGlyphID(key)
                 if glyph_id not in to_unicode:
