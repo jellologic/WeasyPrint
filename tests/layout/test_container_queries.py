@@ -204,3 +204,20 @@ def test_container_style_query_computed():
     block = find_card(page, 'cb')
     assert flex.style['border_left_width'] == 2
     assert block.style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_query_cqh_size_container():
+    # cqh resolves against a size container's block height.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .box { height: 100px; container-type: size }
+        .pad { padding-top: 10cqh }
+      </style>
+      <div class="box"><div class="pad" id="in">a</div></div>
+    ''')
+    inside = find_card(page, 'in')
+    # 10cqh of the 100px size container.
+    assert inside.style['padding_top'] == (10, 'px')

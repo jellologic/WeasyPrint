@@ -98,7 +98,8 @@ class StyleFor:
         # The page content width (from the @page declarations) anchors
         # the container-width chain. Parsing the declarations is pure, so
         # this is safe at init time.
-        self._page_content_width = self._compute_page_content_width()
+        self._page_content_width, self._page_content_height = (
+            self._compute_page_content_width())
 
         PROGRESS_LOGGER.info('Step 3 - Applying CSS')
         layer_order = inf
@@ -118,9 +119,11 @@ class StyleFor:
         # computed styles before their children, for inheritance.
 
         # Iterate on all elements, even if there is no cascaded style for them.
-        containers = {}  # element -> (name, content width)
+        containers = {}  # element -> (name, width, height)
         widths = {}      # element -> content width
+        heights = {}     # element -> content height
         active_widths = {}  # element -> nearest container width
+        active_heights = {}  # element -> nearest size container height
         for element in html.wrapper_element.iter_subtree():
             parent_element = element.parent
             if self._container_rules:
@@ -222,11 +225,13 @@ class StyleFor:
                             style[name] = values, weight
             parent = element.parent.etree_element if element.parent else None
             active_container_width = None
+            active_container_height = None
             ancestor = element.parent
             while ancestor is not None:
                 entry = containers.get(ancestor.etree_element)
                 if entry is not None:
                     active_container_width = entry[1]
+                    active_container_height = entry[2]
                     break
                 ancestor = ancestor.parent
             if active_container_width is None:
@@ -236,22 +241,30 @@ class StyleFor:
             self.set_computed_styles(
                 element.etree_element, root=html.etree_element, parent=parent,
                 base_url=html.base_url, target_collector=target_collector,
-                container_width=active_container_width)
+                container_width=active_container_width,
+                container_height=active_container_height)
             if self._track_containers:
                 style = self._computed_styles.get((element.etree_element, None))
                 if style is not None:
                     if parent_element is None:
                         parent_width = self._page_content_width
+                        parent_height = self._page_content_height
                     else:
                         parent_width = widths.get(parent_element.etree_element)
+                        parent_height = heights.get(parent_element.etree_element)
                     width = self._element_content_width(style, parent_width)
                     widths[element.etree_element] = width
                     active_widths[element.etree_element] = (
                         active_container_width)
-                    if style['container_type'] == 'inline-size':
+                    height = self._element_content_height(style, parent_height)
+                    heights[element.etree_element] = height
+                    if style['container_type'] in ('inline-size', 'size'):
                         name = style['container_name']
                         containers[element.etree_element] = (
-                            None if name == 'none' else name, width)
+                            None if name == 'none' else name,
+                            width,
+                            height if style['container_type'] == 'size'
+                            else None)
 
         # Then computed styles for pseudo elements, in any order.
         # Pseudo-elements inherit from their associated element so they come
@@ -268,7 +281,8 @@ class StyleFor:
                     # The pseudo-element inherits from the element.
                     root=html.etree_element, parent=element,
                     base_url=html.base_url, target_collector=target_collector,
-                    container_width=active_widths.get(element))
+                    container_width=active_widths.get(element),
+                    container_height=active_heights.get(element))
 
         # Clear the cascaded styles, we don't need them anymore. Keep the
         # dictionary, it is used later for page margins.
@@ -323,7 +337,49 @@ class StyleFor:
         self.initial_page_sizes['area'] = (
             size[0] - margins['left'] - margins['right'],
             size[1] - margins['top'] - margins['bottom'])
-        return self.initial_page_sizes['area'][0]
+        return self.initial_page_sizes['area']
+
+    def _resolve_height(self, value, reference):
+        """Resolve a height-like computed value (the height analog of
+        _resolve_width)."""
+        if value == 'auto':
+            return reference
+        unit = getattr(value, 'unit', None)
+        if unit == '%':
+            if reference is None:
+                return None
+            return value.value / 100 * reference
+        if isinstance(value, (int, float)):
+            return float(value)
+        if unit is not None:
+            return value.value
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _element_content_height(self, style, parent_height):
+        """Return the element's content height, None when not determinable."""
+        if (
+                parent_height is None or
+                style['position'] in ('absolute', 'fixed') or
+                style['float'] != 'none'):
+            return None
+        height = self._resolve_height(style['height'], parent_height)
+        if height is None:
+            return None
+        for side in ('top', 'bottom'):
+            margin = style[f'margin_{side}']
+            margin = 0 if margin == 'auto' else self._resolve_height(
+                margin, parent_height)
+            padding = self._resolve_height(style[f'padding_{side}'],
+                                           parent_height)
+            border = self._resolve_height(style[f'border_{side}_width'],
+                                          parent_height)
+            if None in (margin, padding, border):
+                return None
+            height -= margin + padding + border
+        return max(height, 0)
 
     def _resolve_width(self, value, reference):
         """Resolve a width-like computed value, None when undeterminable."""
@@ -407,7 +463,7 @@ class StyleFor:
 
     def set_computed_styles(self, element, parent, root=None, pseudo_type=None,
                             base_url=None, target_collector=None,
-                            container_width=None):
+                            container_width=None, container_height=None):
         """Set the computed values of styles to ``element``.
 
         Take the properties left by ``apply_style_rule`` on an element or
@@ -460,7 +516,8 @@ class StyleFor:
 
         computed = computed_styles[element, pseudo_type] = ComputedStyle(
             parent_style, cascaded, element, pseudo_type, root_style, base_url,
-            self.font_config, self.initial_page_sizes, container_width)
+            self.font_config, self.initial_page_sizes, container_width,
+            container_height)
         if share_key is not None:
             self._computed_cache[share_key] = computed
         if target_collector and computed['anchor']:
@@ -1368,7 +1425,7 @@ class ComputedStyle(dict):
     """Computed style used for non-anonymous boxes."""
     def __init__(self, parent_style, cascaded, element, pseudo_type,
                  root_style, base_url, font_config, initial_page_sizes,
-                 container_width=None):
+                 container_width=None, container_height=None):
         self.specified = {}
         self.parent_style = parent_style
         self.cascaded = cascaded
@@ -1379,15 +1436,17 @@ class ComputedStyle(dict):
         self.base_url = base_url
         self.font_config = font_config
         self.initial_page_sizes = initial_page_sizes
-        # Inline size of the nearest size container, for container units.
+        # Inline/block sizes of the nearest size container, for units.
         self.container_width = container_width
+        self.container_height = container_height
         self.cache = parent_style.cache if parent_style else {}
 
     def copy(self):
         copy = ComputedStyle(
             self.parent_style, self.cascaded, self.element, self.pseudo_type,
             self.root_style, self.base_url, self.font_config,
-            self.initial_page_sizes, self.container_width)
+            self.initial_page_sizes, self.container_width,
+            self.container_height)
         copy.update(self)
         copy.specified = self.specified.copy()
         return copy

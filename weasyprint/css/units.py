@@ -94,16 +94,19 @@ def to_pixels(value, style, property_name, font_size=None):
             ratio = character_ratio(style, unit)
             return value.value * font_size * ratio
     elif unit in CONTAINER_UNITS:
-        # 1% of the nearest size-container's inline width (or its block
-        # height for cqh/cqb — inline-size containers don't expose a
-        # queryable block size, so cqh/cqb resolve against the page area
-        # like the viewport units). Elements with no container ancestor
-        # resolve against the page area too.
+        # 1% of the nearest container's inline width (cqw/cqi) or block
+        # height (cqh/cqb for size containers). Elements with no
+        # container ancestor, or cqh/cqb without a size container,
+        # resolve against the page area.
         page_size = style.initial_page_sizes.get('area')
         if unit in ('cqw', 'cqi'):
             container_width = getattr(style, 'container_width', None)
             if container_width is not None:
                 return value.value / 100 * container_width
+        else:
+            container_height = getattr(style, 'container_height', None)
+            if container_height is not None:
+                return value.value / 100 * container_height
         if page_size is None:
             LOGGER.debug(
                 '%s unit resolved before first page layout', unit)
