@@ -84,3 +84,27 @@ def test_writing_mode_percentage_height():
     assert head.height == 100
     line, = head.children
     assert line.width <= 100
+
+
+def test_writing_mode_auto_height_fragmentation():
+    # An auto-height vertical block lays its text within the available
+    # page height and continues on the next page.
+    pages = render_pages('''
+      <style>
+        @page { size: 100px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 20px;
+               line-height: 20px }
+        .v { writing-mode: vertical-rl; width: 20px }
+      </style>
+      <div class="v">Head Head Head Head Head Head Head Head</div>
+    ''')
+    assert len(pages) >= 2
+    total = ''
+    for page in pages:
+        html, = page.children
+        body, = html.children
+        v, = body.children
+        total += ''.join(
+            box.text for box in v.descendants()
+            if type(box).__name__ == 'TextBox')
+    assert total.replace(' ', '') == 'HeadHeadHeadHeadHeadHeadHeadHead'

@@ -397,21 +397,19 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
     if adjoining_margins:
         position_y += collapse_margin(adjoining_margins)
     new_containing_block = box
-    if (
-            box.style['writing_mode'] != 'horizontal-tb' and
-            box.height != 'auto' and box.height):
+    if box.style['writing_mode'] != 'horizontal-tb':
         # Vertical writing: the children’s inline axis is the box’s
-        # resolved height (definite lengths and resolvable percentages).
-        # Lay them in a swapped containing block; the box is drawn
-        # rotated (see draw_block_level). With an indefinite height the
-        # block falls back to horizontal.
-        swap = box.copy()
-        # Cap the run length at the available page height so the
-        # fragment fits the page; the continuation re-lays on the next
-        # page through the standard fragmentation machinery.
+        # height. Lay them in a swapped containing block capped at the
+        # available page height so the fragment fits the page; the
+        # continuation re-lays on the next page through the standard
+        # fragmentation machinery. The box is drawn rotated (see
+        # draw_block_level).
         available_height = context.page_bottom - bottom_space - position_y
-        if available_height > 0:
-            swap.width = min(box.height, available_height)
+        swap = box.copy()
+        if box.height != 'auto' and box.height:
+            swap.width = min(box.height, max(available_height, 0))
+        else:
+            swap.width = max(available_height, 0)
         swap.height = box.width
         new_containing_block = swap
     # text-wrap: balance — narrow the line-breaking width so that the
