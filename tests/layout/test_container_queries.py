@@ -145,3 +145,23 @@ def test_container_units():
     # No container ancestor: falls back to the page content width
     # (2cqw of 400px).
     assert outside.style['padding_left'] == (8, 'px')
+
+
+@assert_no_logs
+def test_container_style_query():
+    # Style queries match the container's custom-property declarations.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .c { --theme: dark }
+        .c2 { --theme: light }
+        @container style(--theme: dark) { .card { border: 2px solid } }
+      </style>
+      <div class="c"><div class="card" id="ca">a</div></div>
+      <div class="c2"><div class="card" id="cb">b</div></div>
+    ''')
+    dark = find_card(page, 'ca')
+    light = find_card(page, 'cb')
+    assert dark.style['border_left_width'] == 2
+    assert light.style['border_left_width'] == 0

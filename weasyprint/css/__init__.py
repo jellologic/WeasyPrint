@@ -123,34 +123,52 @@ class StyleFor:
         active_widths = {}  # element -> nearest container width
         for element in html.wrapper_element.iter_subtree():
             parent_element = element.parent
-            if self._container_rules and containers:
-                parent_width = (
-                    widths.get(parent_element.etree_element)
-                    if parent_element is not None else None)
+            if self._container_rules:
                 # Apply container rules against the nearest matching
                 # ancestor container.
                 for name, condition, selectors, declarations in (
                         self._container_rules):
-                    ancestor = element.parent
-                    container_width = None
-                    while ancestor is not None:
-                        entry = containers.get(ancestor.etree_element)
-                        if entry is not None and (
-                                name is None or name == entry[0]):
-                            container_width = entry[1]
-                            break
-                        ancestor = ancestor.parent
-                    if container_width is None:
-                        continue
-                    lower, lower_strict, upper, upper_strict = condition
-                    if lower is not None and (
-                            container_width < lower or
-                            (lower_strict and container_width == lower)):
-                        continue
-                    if upper is not None and (
-                            container_width > upper or
-                            (upper_strict and container_width == upper)):
-                        continue
+                    if condition[0] == 'style':
+                        # Style queries match the nearest ancestor whose
+                        # cascaded declarations carry the custom property.
+                        _, prop, want = condition
+                        ancestor = element.parent
+                        item = None
+                        while ancestor is not None:
+                            container_cascaded = cascaded_styles.get(
+                                (ancestor.etree_element, None), {})
+                            item = container_cascaded.get(prop)
+                            if item is not None:
+                                break
+                            ancestor = ancestor.parent
+                        else:
+                            continue
+                        if tinycss2.serialize(item[0]).strip() != want:
+                            continue
+                    else:
+                        if not containers:
+                            continue
+                        ancestor = element.parent
+                        container_width = None
+                        while ancestor is not None:
+                            entry = containers.get(ancestor.etree_element)
+                            if entry is not None and (
+                                    name is None or name == entry[0]):
+                                container_width = entry[1]
+                                break
+                            ancestor = ancestor.parent
+                        if container_width is None:
+                            continue
+                        (_, lower, lower_strict, upper, upper_strict) = (
+                            condition)
+                        if lower is not None and (
+                                container_width < lower or
+                                (lower_strict and container_width == lower)):
+                            continue
+                        if upper is not None and (
+                                container_width > upper or
+                                (upper_strict and container_width == upper)):
+                            continue
                     style = cascaded_styles.setdefault(
                         (element.etree_element, None), {})
                     for selector in selectors:
@@ -2084,10 +2102,29 @@ def preprocess_stylesheet(device_media_type, base_url, stylesheet_rules, url_fet
                 condition_block = prelude[0]
             else:
                 condition_block = None
-            condition = (
-                parse_container_condition(condition_block)
-                if condition_block is not None and condition_block.type == '() block'
-                else None)
+            condition = None
+            if (
+                    condition_block is not None and
+                    condition_block.type == 'function' and
+                    condition_block.lower_name == 'style'):
+                arguments = [
+                    token for token in condition_block.arguments
+                    if token.type not in ('whitespace', 'comment')]
+                if (len(arguments) == 3 and arguments[0].type == 'ident' and
+                        arguments[0].lower_value.startswith('--') and
+                        arguments[1].type == 'literal' and
+                        arguments[1].value == ':'):
+                    # Cascaded declaration keys use underscores.
+                    prop = arguments[0].lower_value.replace('-', '_')
+                    condition = (
+                        'style', prop,
+                        tinycss2.serialize(arguments[2:]).strip())
+            elif (
+                    condition_block is not None and
+                    condition_block.type == '() block'):
+                condition = parse_container_condition(condition_block)
+                if condition is not None:
+                    condition = ('width', *condition)
             if condition is None:
                 LOGGER.warning(
                     'Unsupported @container condition %r, '
