@@ -7,6 +7,7 @@ from math import inf
 from ..css import AnonymousStyle
 from ..formatting_structure import boxes, build
 from ..logger import PROGRESS_LOGGER
+from ..text.line_break import strut
 from .absolute import absolute_box_layout, absolute_layout
 from .block import block_container_layout, block_level_layout
 from .float import float_layout
@@ -600,6 +601,21 @@ def make_page(context, root_box, page_type, resume_at, page_number,
     root_box.position_x = page.content_box_x()
     root_box.position_y = page.content_box_y()
     context.page_bottom = root_box.position_y + page.height
+    if root_box.style['line_grid'] == 'create':
+        # The root element establishes the line grid used on the whole page.
+        pitch, baseline = strut(root_box.style)
+        style = root_box.style
+
+        def offset(name):
+            value = style[name]
+            return value.value if hasattr(value, 'value') else value
+
+        origin_y = (
+            root_box.position_y + offset('margin_top') +
+            offset('padding_top') + offset('border_top_width') + baseline)
+        context.line_grid = (pitch, origin_y)
+    else:
+        context.line_grid = None
     initial_containing_block = page
 
     footnote_area_style = context.style_for(page_type, '@footnote')

@@ -244,6 +244,7 @@ class LayoutContext:
         self.forced_break = False
         self.broken_out_of_flow = {}
         self.in_column = False
+        self.line_grid = None  # (pitch, origin) of the root line grid
 
         # Cache
         self.tables = {}

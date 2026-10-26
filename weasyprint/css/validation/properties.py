@@ -1063,6 +1063,20 @@ def float_(keyword):  # XXX do not hide the "float" builtin
 
 
 @property()
+@single_keyword
+def line_grid(keyword):
+    """``line-grid`` property validation."""
+    return keyword in ('match-parent', 'create')
+
+
+@property()
+@single_keyword
+def line_snap(keyword):
+    """``line-snap`` property validation."""
+    return keyword in ('none', 'baseline', 'contain')
+
+
+@property()
 @comma_separated_list
 def font_family(tokens):
     """``font-family`` property validation."""

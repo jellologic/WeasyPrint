@@ -1,7 +1,7 @@
 """Page breaking and layout for block-level and block-container boxes."""
 
 from functools import partial
-from math import inf
+from math import ceil, inf
 
 from ..formatting_structure import boxes
 from .absolute import AbsolutePlaceholder, absolute_layout
@@ -358,6 +358,19 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
         # Update line resume_at and position_y
         line.resume_at = resume_at
         new_position_y = line.position_y + line.height
+        # Move the line down so that its baseline lands on the line grid
+        # created by the root element.
+        if (
+                context.line_grid is not None and
+                box.style['line_snap'] == 'baseline' and
+                line.baseline is not None):
+            pitch, origin = context.line_grid
+            baseline_y = line.position_y + line.baseline
+            steps = max(0, ceil((baseline_y - origin) / pitch - 1e-6))
+            delta = origin + steps * pitch - baseline_y
+            if delta:
+                line.translate(dy=delta)
+                new_position_y += delta
 
         # Add bottom padding and border to the bottom position of the
         # box if needed
