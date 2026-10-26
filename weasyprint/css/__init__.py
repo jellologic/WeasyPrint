@@ -186,6 +186,10 @@ class StyleFor:
                     active_container_width = entry[1]
                     break
                 ancestor = ancestor.parent
+            if active_container_width is None:
+                # Container units fall back to the page content width
+                # (the initial containing block) outside any container.
+                active_container_width = self._page_content_width
             self.set_computed_styles(
                 element.etree_element, root=html.etree_element, parent=parent,
                 base_url=html.base_url, target_collector=target_collector,

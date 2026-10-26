@@ -133,7 +133,7 @@ def test_container_units():
         body { margin: 0; font-family: weasyprint; font-size: 10px }
         .half { width: 50%; container-type: inline-size }
         .pad { padding-left: 10cqw }
-        .out { padding-left: 2cqw }
+        #out { padding-left: 2cqw }
       </style>
       <div class="half"><div class="pad" id="in">a</div></div>
       <div class="pad" id="out">b</div>
@@ -142,5 +142,6 @@ def test_container_units():
     outside = find_card(page, 'out')
     # 10cqw of the 200px container.
     assert inside.style['padding_left'] == (20, 'px')
-    # No container ancestor: resolves to 0.
-    assert outside.style['padding_left'] == (0, 'px')
+    # No container ancestor: falls back to the page content width
+    # (2cqw of 400px).
+    assert outside.style['padding_left'] == (8, 'px')
