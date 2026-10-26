@@ -1537,6 +1537,21 @@ def set_viewport_overflow(root_box):
     return root_box
 
 
+def in_flow_descendants(box):
+    """Yield the descendants of ``box`` that stay in the page flow.
+
+    Running elements are displayed in page margin boxes and footnotes at
+    the bottom of the page: they are removed from the flow, so their text
+    is not part of their ancestors’ content.
+    """
+    for child in box.children:
+        if child.is_running() or child.style['float'] == 'footnote':
+            continue
+        yield child
+        if isinstance(child, boxes.ParentBox):
+            yield from in_flow_descendants(child)
+
+
 def box_text(box):
     # Stripping may not be the "right" way, but it seems to be what users usually want
     # in this case. The specification asks for the "text content", probably as defined
@@ -1547,7 +1562,7 @@ def box_text(box):
         return box.text.strip()
     elif isinstance(box, boxes.ParentBox):
         return ''.join(
-            child.text for child in box.descendants()
+            child.text for child in in_flow_descendants(box)
             if not child.element_tag.endswith('::before') and
             not child.element_tag.endswith('::after') and
             not child.element_tag.endswith('::marker') and

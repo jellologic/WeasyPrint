@@ -1256,3 +1256,27 @@ def test_display_none_root(html):
     box = parse_all(html)
     assert box.style['display'] == ('block', 'flow')
     assert not box.children
+
+
+@assert_no_logs
+def test_string_set_running_element():
+    # Running elements are taken out of the flow: their text must not be
+    # part of content() in string-set or bookmark-label.
+    # Regression test for https://github.com/jellologic/WeasyPrint/issues/3
+    page, = render_pages('''
+      <style>
+        body { font-family: weasyprint }
+        .tab { position: running(tab) }
+        h2 { string-set: s content(); bookmark-label: content(text) }
+        @page { @top-left { content: string(s) } }
+      </style>
+      <h2><span class="tab">TAB</span>Title</h2>
+    ''')
+    html, top_left = page.children
+    line_box, = top_left.children
+    text_box, = line_box.children
+    assert text_box.text == 'Title'
+    h2, = [
+        box for box in page.descendants()
+        if box.element_tag == 'h2' and box.bookmark_label]
+    assert h2.bookmark_label == 'Title'
