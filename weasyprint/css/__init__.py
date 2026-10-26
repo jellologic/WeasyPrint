@@ -254,13 +254,15 @@ class StyleFor:
 
         Parsing the declarations directly avoids computing the page style
         during the cascade, which would poison the page-style cache that
-        the layout-time viewport units rely on.
+        the layout-time viewport units rely on. The page dimensions are
+        also seeded here so that viewport and container units resolve
+        correctly during the cascade.
 
         """
         from .computed_values import INITIAL_VALUES
 
         size = tuple(INITIAL_VALUES['size'])
-        margins = {'left': 0, 'right': 0}
+        margins = {'left': 0, 'right': 0, 'top': 0, 'bottom': 0}
         for sheet, _, _ in self._sheets:
             for _rule, _selectors, declarations in getattr(
                     sheet, 'page_rules', ()):
@@ -284,13 +286,19 @@ class StyleFor:
                         if side in margins and not isinstance(values, str):
                             value = values[0] if isinstance(values, tuple) \
                                 else values
+                            reference = size[0] if side in (
+                                'left', 'right') else size[1]
                             if getattr(value, 'unit', None) == '%':
-                                margins[side] = value.value / 100 * size[0]
+                                margins[side] = value.value / 100 * reference
                             elif isinstance(value, (int, float)):
                                 margins[side] = value
                             elif hasattr(value, 'value'):
                                 margins[side] = value.value
-        return size[0] - margins['left'] - margins['right']
+        self.initial_page_sizes['box'] = size
+        self.initial_page_sizes['area'] = (
+            size[0] - margins['left'] - margins['right'],
+            size[1] - margins['top'] - margins['bottom'])
+        return self.initial_page_sizes['area'][0]
 
     def _resolve_width(self, value, reference):
         """Resolve a width-like computed value, None when undeterminable."""

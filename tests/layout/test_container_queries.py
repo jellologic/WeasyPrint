@@ -165,3 +165,21 @@ def test_container_style_query():
     light = find_card(page, 'cb')
     assert dark.style['border_left_width'] == 2
     assert light.style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_query_height_units():
+    # cqh resolves against the page area height (inline-size containers
+    # don't expose a queryable block size).
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .half { width: 50%; container-type: inline-size }
+        .pad { padding-top: 10cqh }
+      </style>
+      <div class="half"><div class="pad" id="in">a</div></div>
+    ''')
+    inside = find_card(page, 'in')
+    # 10cqh of the 100px page area height.
+    assert inside.style['padding_top'] == (10, 'px')
