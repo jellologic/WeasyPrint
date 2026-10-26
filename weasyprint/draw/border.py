@@ -55,62 +55,63 @@ def draw_column_rules(stream, box):
 
 def draw_border(stream, box):
     """Draw the box borders and column rules to a ``pdf.stream.Stream``."""
+    with stream.overprint_state(box.style):
 
-    # The box is hidden, easy.
-    if box.style['visibility'] != 'visible':
-        return
+        # The box is hidden, easy.
+        if box.style['visibility'] != 'visible':
+            return
 
-    # Draw column rules.
-    columns = (
-        isinstance(box, boxes.BlockContainerBox) and (
-            box.style['column_width'] != 'auto' or
-            box.style['column_count'] != 'auto'))
-    if columns and box.style['column_rule_width']:
-        with stream.artifact():
-            draw_column_rules(stream, box)
+        # Draw column rules.
+        columns = (
+            isinstance(box, boxes.BlockContainerBox) and (
+                box.style['column_width'] != 'auto' or
+                box.style['column_count'] != 'auto'))
+        if columns and box.style['column_rule_width']:
+            with stream.artifact():
+                draw_column_rules(stream, box)
 
-    # If there's a border image, that takes precedence.
-    if box.style['border_image_source'][0] != 'none' and box.border_image is not None:
-        with stream.artifact():
-            draw_border_image(
-                box, stream, box.border_image, box.style['border_image_slice'],
-                box.style['border_image_repeat'], box.style['border_image_outset'],
-                box.style['border_image_width'])
-        return
+        # If there's a border image, that takes precedence.
+        if box.style['border_image_source'][0] != 'none' and box.border_image is not None:
+            with stream.artifact():
+                draw_border_image(
+                    box, stream, box.border_image, box.style['border_image_slice'],
+                    box.style['border_image_repeat'], box.style['border_image_outset'],
+                    box.style['border_image_width'])
+            return
 
-    widths = [getattr(box, f'border_{side}_width') for side in SIDES]
+        widths = [getattr(box, f'border_{side}_width') for side in SIDES]
 
-    if set(widths) == {0}:
-        # No border, return early.
-        return
+        if set(widths) == {0}:
+            # No border, return early.
+            return
 
-    colors = [get_color(box.style, f'border_{side}_color') for side in SIDES]
-    styles = [
-        colors[i].alpha and box.style[f'border_{side}_style']
-        for (i, side) in enumerate(SIDES)]
+        colors = [get_color(box.style, f'border_{side}_color') for side in SIDES]
+        styles = [
+            colors[i].alpha and box.style[f'border_{side}_style']
+            for (i, side) in enumerate(SIDES)]
 
-    simple_style = set(styles) in ({'solid'}, {'double'})  # one style, simple lines
-    single_color = len(set(colors)) == 1  # one color
-    four_sides = 0 not in widths  # no 0-width border, to avoid PDF artifacts
-    if simple_style and single_color and four_sides:
-        # Simple case, we only draw rounded rectangles.
-        with stream.artifact():
-            draw_rounded_border(stream, box, styles[0], colors[0])
-        return
+        simple_style = set(styles) in ({'solid'}, {'double'})  # one style, simple lines
+        single_color = len(set(colors)) == 1  # one color
+        four_sides = 0 not in widths  # no 0-width border, to avoid PDF artifacts
+        if simple_style and single_color and four_sides:
+            # Simple case, we only draw rounded rectangles.
+            with stream.artifact():
+                draw_rounded_border(stream, box, styles[0], colors[0])
+            return
 
-    # We're not smart enough to find a good way to draw the borders, we must
-    # draw them side by side. Order is not specified, but this one seems to be
-    # close to what other browsers do.
-    values = tuple(zip(SIDES, widths, colors, styles))
-    for index in (2, 3, 1, 0):
-        side, width, color, style = values[index]
-        if width == 0 or not color:
-            continue
-        with stream.artifact(), stream.stacked():
-            clip_border_segment(
-                stream, style, width, side, box.rounded_border_box()[:4],
-                widths, box.rounded_border_box()[4:])
-            draw_rounded_border(stream, box, style, styled_color(style, color, side))
+        # We're not smart enough to find a good way to draw the borders, we must
+        # draw them side by side. Order is not specified, but this one seems to be
+        # close to what other browsers do.
+        values = tuple(zip(SIDES, widths, colors, styles))
+        for index in (2, 3, 1, 0):
+            side, width, color, style = values[index]
+            if width == 0 or not color:
+                continue
+            with stream.artifact(), stream.stacked():
+                clip_border_segment(
+                    stream, style, width, side, box.rounded_border_box()[:4],
+                    widths, box.rounded_border_box()[4:])
+                draw_rounded_border(stream, box, style, styled_color(style, color, side))
 
 
 def draw_border_image(box, stream, image, border_slice, border_repeat, border_outset,

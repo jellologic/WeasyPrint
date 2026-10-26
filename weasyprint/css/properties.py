@@ -23,6 +23,8 @@ INITIAL_VALUES = {
     'float': 'none',
     'filter': 'none',
     'comb': 'none',
+    'overprint': 'none',
+    'overprint_mode': 0,
     'break_before_min_space': 'auto',
     'float_reference': 'inline',
     'left': 'auto',

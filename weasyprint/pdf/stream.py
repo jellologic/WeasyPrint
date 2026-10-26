@@ -31,6 +31,7 @@ class Stream(pydyf.Stream):
             {} if optional_content_groups is None else optional_content_groups)
         self._current_color = self._current_color_stroke = None
         self._current_alpha = self._current_alpha_stroke = None
+        self._current_overprint = None
         self._current_font = self._current_font_size = None
         self._old_font = self._old_font_size = None
         self._ctm_stack = [Matrix()]
@@ -167,6 +168,45 @@ class Stream(pydyf.Stream):
                 if key not in self._resources['ExtGState']:
                     self._resources['ExtGState'][key] = pydyf.Dictionary({'ca': alpha})
                 super().set_state(key)
+
+    def set_overprint(self, fill, stroke, mode=0):
+        """Set the overprint graphics state for fills and strokes."""
+        key = f'O{int(bool(stroke))}{int(bool(fill))}{int(bool(mode))}'
+        if key != self._current_overprint:
+            self._current_overprint = key
+            if key not in self._resources['ExtGState']:
+                state = {'Type': '/ExtGState'}
+                if stroke:
+                    state['OP'] = 'true'
+                if fill:
+                    state['op'] = 'true'
+                if mode:
+                    state['OPM'] = 1
+                self._resources['ExtGState'][key] = pydyf.Dictionary(state)
+            super().set_state(key)
+
+    @contextmanager
+    def overprint_state(self, style, fill=True, stroke=True):
+        """Apply the element overprint state, then reset it."""
+        if style is None:
+            yield
+            return
+        value = style['overprint']
+        mode = style['overprint_mode']
+        want_fill = value in ('fill', 'all')
+        want_stroke = value in ('stroke', 'all')
+        applied = (
+            value != 'none' and
+            ((fill and want_fill) or (stroke and want_stroke)))
+        if applied:
+            self.set_overprint(
+                fill and want_fill, stroke and want_stroke,
+                mode if isinstance(mode, int) else 0)
+        try:
+            yield
+        finally:
+            if applied:
+                self.set_overprint(False, False, 0)
 
     def set_alpha_state(self, x, y, width, height, mode='luminosity'):
         alpha_stream = self.add_group(x, y, width, height)

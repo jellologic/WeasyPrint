@@ -430,103 +430,104 @@ def draw_background(stream, bg, clip_box=True, bleed=None, marks=()):
     border box of the background, but only to the painting area.
 
     """
-    if bg is None:
-        return
+    with stream.overprint_state(bg.style if bg is not None else None):
+        if bg is None:
+            return
 
-    with stream.stacked():
-        if clip_box:
-            for box in bg.layers[-1].clipped_boxes:
-                rounded_box(stream, box)
-            stream.clip()
-            stream.end()
-
-        # Draw background color.
-        if bg.color.alpha > 0:
-            with stream.artifact(), stream.stacked():
-                stream.set_color(bg.color)
-                painting_area = bg.layers[-1].painting_area
-                stream.rectangle(*painting_area)
+        with stream.stacked():
+            if clip_box:
+                for box in bg.layers[-1].clipped_boxes:
+                    rounded_box(stream, box)
                 stream.clip()
                 stream.end()
-                stream.rectangle(*painting_area)
-                stream.fill()
 
-        # Draw crop marks and crosses.
-        if bleed and marks:
-            x, y, width, height = bg.layers[-1].painting_area
-            half_bleed = {key: value * 0.5 for key, value in bleed.items()}
-            svg = f'''
-              <svg height="{height}" width="{width}"
-                   fill="transparent" stroke="black" stroke-width="1"
-                   xmlns="http://www.w3.org/2000/svg">
-            '''
-            if 'crop' in marks:
-                svg += f'''
-                  <path d="M0,{bleed['top']} h{half_bleed['left']}" />
-                  <path d="M0,{bleed['top']} h{half_bleed['right']}"
-                        transform="translate({width},0) scale(-1,1)" />
-                  <path d="M0,{bleed['bottom']} h{half_bleed['right']}"
-                        transform="translate({width},{height}) scale(-1,-1)" />
-                  <path d="M0,{bleed['bottom']} h{half_bleed['left']}"
-                        transform="translate(0,{height}) scale(1,-1)" />
-                  <path d="M{bleed['left']},0 v{half_bleed['top']}" />
-                  <path d="M{bleed['right']},0 v{half_bleed['bottom']}"
-                        transform="translate({width},{height}) scale(-1,-1)" />
-                  <path d="M{bleed['left']},0 v{half_bleed['bottom']}"
-                        transform="translate(0,{height}) scale(1,-1)" />
-                  <path d="M{bleed['right']},0 v{half_bleed['top']}"
-                        transform="translate({width},0) scale(-1,1)" />
+            # Draw background color.
+            if bg.color.alpha > 0:
+                with stream.artifact(), stream.stacked():
+                    stream.set_color(bg.color)
+                    painting_area = bg.layers[-1].painting_area
+                    stream.rectangle(*painting_area)
+                    stream.clip()
+                    stream.end()
+                    stream.rectangle(*painting_area)
+                    stream.fill()
+
+            # Draw crop marks and crosses.
+            if bleed and marks:
+                x, y, width, height = bg.layers[-1].painting_area
+                half_bleed = {key: value * 0.5 for key, value in bleed.items()}
+                svg = f'''
+                  <svg height="{height}" width="{width}"
+                       fill="transparent" stroke="black" stroke-width="1"
+                       xmlns="http://www.w3.org/2000/svg">
                 '''
-            if 'cross' in marks:
-                svg += f'''
-                  <circle r="{half_bleed['top']}" transform="scale(0.5)
-                     translate({width},{half_bleed['top']}) scale(0.5)" />
-                  <path transform="scale(0.5) translate({width},0)" d="
-                    M-{half_bleed['top']},{half_bleed['top']} h{bleed['top']}
-                    M0,0 v{bleed['top']}" />
-                  <circle r="{half_bleed['bottom']}" transform="
-                    translate(0,{height}) scale(0.5)
-                    translate({width},-{half_bleed['bottom']}) scale(0.5)" />
-                  <path d="M-{half_bleed['bottom']},-{half_bleed['bottom']}
-                    h{bleed['bottom']} M0,0 v-{bleed['bottom']}" transform="
-                    translate(0,{height}) scale(0.5) translate({width},0)" />
-                  <circle r="{half_bleed['left']}" transform="scale(0.5)
-                    translate({half_bleed['left']},{height}) scale(0.5)" />
-                  <path d="M{half_bleed['left']},-{half_bleed['left']}
-                    v{bleed['left']} M0,0 h{bleed['left']}"
-                    transform="scale(0.5) translate(0,{height})" />
-                  <circle r="{half_bleed['right']}" transform="
-                    translate({width},0) scale(0.5)
-                    translate(-{half_bleed['right']},{height}) scale(0.5)" />
-                  <path d="M-{half_bleed['right']},-{half_bleed['right']}
-                    v{bleed['right']} M0,0 h-{bleed['right']}" transform="
-                    translate({width},0) scale(0.5) translate(0,{height})" />
-                '''
-            svg += '</svg>'
-            tree = ElementTree.fromstring(svg)
-            image = SVGImage(tree, None, None, None)
-            # Painting area is the PDF media box
-            size = (width, height)
-            position = (x, y)
-            repeat = ('no-repeat', 'no-repeat')
-            unbounded = True
-            painting_area = position + size
-            positioning_area = (0, 0, width, height)
-            clipped_boxes = []
-            layer = BackgroundLayer(
-                image, size, position, repeat, unbounded, painting_area,
-                positioning_area, clipped_boxes)
-            bg.layers.insert(0, layer)
-        # Blend mode for each background layer (cycles per spec). The crop-mark
-        # layer (if any was inserted at index 0) is not a real background layer
-        # and always uses the default 'normal' blend mode.
-        blend_modes = list(islice(
-            cycle(bg.style['background_blend_mode']), len(bg.layers)))
-        if bleed and marks:
-            blend_modes = ['normal', *blend_modes[:len(bg.layers) - 1]]
-        # Paint in reversed order: first layer is "closest" to the viewer.
-        for layer, blend_mode in reversed(list(zip(bg.layers, blend_modes))):
-            draw_background_image(stream, layer, bg.style, blend_mode)
+                if 'crop' in marks:
+                    svg += f'''
+                      <path d="M0,{bleed['top']} h{half_bleed['left']}" />
+                      <path d="M0,{bleed['top']} h{half_bleed['right']}"
+                            transform="translate({width},0) scale(-1,1)" />
+                      <path d="M0,{bleed['bottom']} h{half_bleed['right']}"
+                            transform="translate({width},{height}) scale(-1,-1)" />
+                      <path d="M0,{bleed['bottom']} h{half_bleed['left']}"
+                            transform="translate(0,{height}) scale(1,-1)" />
+                      <path d="M{bleed['left']},0 v{half_bleed['top']}" />
+                      <path d="M{bleed['right']},0 v{half_bleed['bottom']}"
+                            transform="translate({width},{height}) scale(-1,-1)" />
+                      <path d="M{bleed['left']},0 v{half_bleed['bottom']}"
+                            transform="translate(0,{height}) scale(1,-1)" />
+                      <path d="M{bleed['right']},0 v{half_bleed['top']}"
+                            transform="translate({width},0) scale(-1,1)" />
+                    '''
+                if 'cross' in marks:
+                    svg += f'''
+                      <circle r="{half_bleed['top']}" transform="scale(0.5)
+                         translate({width},{half_bleed['top']}) scale(0.5)" />
+                      <path transform="scale(0.5) translate({width},0)" d="
+                        M-{half_bleed['top']},{half_bleed['top']} h{bleed['top']}
+                        M0,0 v{bleed['top']}" />
+                      <circle r="{half_bleed['bottom']}" transform="
+                        translate(0,{height}) scale(0.5)
+                        translate({width},-{half_bleed['bottom']}) scale(0.5)" />
+                      <path d="M-{half_bleed['bottom']},-{half_bleed['bottom']}
+                        h{bleed['bottom']} M0,0 v-{bleed['bottom']}" transform="
+                        translate(0,{height}) scale(0.5) translate({width},0)" />
+                      <circle r="{half_bleed['left']}" transform="scale(0.5)
+                        translate({half_bleed['left']},{height}) scale(0.5)" />
+                      <path d="M{half_bleed['left']},-{half_bleed['left']}
+                        v{bleed['left']} M0,0 h{bleed['left']}"
+                        transform="scale(0.5) translate(0,{height})" />
+                      <circle r="{half_bleed['right']}" transform="
+                        translate({width},0) scale(0.5)
+                        translate(-{half_bleed['right']},{height}) scale(0.5)" />
+                      <path d="M-{half_bleed['right']},-{half_bleed['right']}
+                        v{bleed['right']} M0,0 h-{bleed['right']}" transform="
+                        translate({width},0) scale(0.5) translate(0,{height})" />
+                    '''
+                svg += '</svg>'
+                tree = ElementTree.fromstring(svg)
+                image = SVGImage(tree, None, None, None)
+                # Painting area is the PDF media box
+                size = (width, height)
+                position = (x, y)
+                repeat = ('no-repeat', 'no-repeat')
+                unbounded = True
+                painting_area = position + size
+                positioning_area = (0, 0, width, height)
+                clipped_boxes = []
+                layer = BackgroundLayer(
+                    image, size, position, repeat, unbounded, painting_area,
+                    positioning_area, clipped_boxes)
+                bg.layers.insert(0, layer)
+            # Blend mode for each background layer (cycles per spec). The crop-mark
+            # layer (if any was inserted at index 0) is not a real background layer
+            # and always uses the default 'normal' blend mode.
+            blend_modes = list(islice(
+                cycle(bg.style['background_blend_mode']), len(bg.layers)))
+            if bleed and marks:
+                blend_modes = ['normal', *blend_modes[:len(bg.layers) - 1]]
+            # Paint in reversed order: first layer is "closest" to the viewer.
+            for layer, blend_mode in reversed(list(zip(bg.layers, blend_modes))):
+                draw_background_image(stream, layer, bg.style, blend_mode)
 
 
 def draw_background_image(stream, layer, style, blend_mode='normal'):

@@ -17,83 +17,84 @@ from .color import get_color
 
 def draw_text(stream, textbox, offset_x, text_overflow, block_ellipsis):
     """Draw a textbox to a pydyf stream."""
-    from ..layout.percent import percentage
+    with stream.overprint_state(textbox.style):
+        from ..layout.percent import percentage
 
-    # Pango crashes with font-size: 0.
-    assert textbox.style['font_size']
+        # Pango crashes with font-size: 0.
+        assert textbox.style['font_size']
 
-    # Don’t draw invisible textboxes.
-    if textbox.style['visibility'] != 'visible':
-        return
+        # Don’t draw invisible textboxes.
+        if textbox.style['visibility'] != 'visible':
+            return
 
-    # Draw underline and overline.
-    text_decoration_values = textbox.style['text_decoration_line']
-    text_decoration_color = get_color(textbox.style, 'text_decoration_color')
-    if 'underline' in text_decoration_values or 'overline' in text_decoration_values:
-        if textbox.style['text_decoration_thickness'] in ('auto', 'from-font'):
-            thickness = textbox.pango_layout.underline_thickness
-        else:
-            thickness = percentage(
-                textbox.style['text_decoration_thickness'], textbox.style,
-                textbox.style['font_size'])
-    if 'overline' in text_decoration_values:
-        offset_y = (
-            textbox.baseline - textbox.pango_layout.ascent + thickness / 2)
-        draw_text_decoration(
-            stream, textbox, offset_x, offset_y, thickness,
-            text_decoration_color)
-    if 'underline' in text_decoration_values:
-        if textbox.style['text_underline_offset'] == 'auto':
-            underline_offset = - textbox.pango_layout.underline_position
-        else:
-            underline_offset = percentage(
-                textbox.style['text_underline_offset'], textbox.style,
-                textbox.style['font_size'])
-        offset_y = textbox.baseline + underline_offset + thickness / 2
-        draw_text_decoration(
-            stream, textbox, offset_x, offset_y, thickness,
-            text_decoration_color)
+        # Draw underline and overline.
+        text_decoration_values = textbox.style['text_decoration_line']
+        text_decoration_color = get_color(textbox.style, 'text_decoration_color')
+        if 'underline' in text_decoration_values or 'overline' in text_decoration_values:
+            if textbox.style['text_decoration_thickness'] in ('auto', 'from-font'):
+                thickness = textbox.pango_layout.underline_thickness
+            else:
+                thickness = percentage(
+                    textbox.style['text_decoration_thickness'], textbox.style,
+                    textbox.style['font_size'])
+        if 'overline' in text_decoration_values:
+            offset_y = (
+                textbox.baseline - textbox.pango_layout.ascent + thickness / 2)
+            draw_text_decoration(
+                stream, textbox, offset_x, offset_y, thickness,
+                text_decoration_color)
+        if 'underline' in text_decoration_values:
+            if textbox.style['text_underline_offset'] == 'auto':
+                underline_offset = - textbox.pango_layout.underline_position
+            else:
+                underline_offset = percentage(
+                    textbox.style['text_underline_offset'], textbox.style,
+                    textbox.style['font_size'])
+            offset_y = textbox.baseline + underline_offset + thickness / 2
+            draw_text_decoration(
+                stream, textbox, offset_x, offset_y, thickness,
+                text_decoration_color)
 
-    # Draw text.
-    x, y = textbox.position_x, textbox.position_y + textbox.baseline
-    textbox.pango_layout.reactivate(textbox.style)
+        # Draw text.
+        x, y = textbox.position_x, textbox.position_y + textbox.baseline
+        textbox.pango_layout.reactivate(textbox.style)
 
-    # Draw text shadows behind the glyphs (the first shadow in the list is
-    # painted on top, so paint in reverse order).
-    shadows = textbox.style['text_shadow']
-    if shadows != 'none':
-        for color, offset_x, offset_y, blur in reversed(shadows):
-            if color is None or color == 'currentcolor':
-                color = textbox.style['color']
-            if color.alpha == 0:
-                continue
-            with stream.stacked():
-                stream.set_color(color)
-                if blur > 0:
-                    # Approximate the blur by lowering the opacity (sharp edge).
-                    stream.set_alpha(max(0.1, color.alpha / (1 + blur)))
-                stream.begin_text()
-                draw_first_line(
-                    stream, textbox, text_overflow, block_ellipsis,
-                    Matrix(d=-1, e=x + offset_x, f=y + offset_y))
-                stream.end_text()
+        # Draw text shadows behind the glyphs (the first shadow in the list is
+        # painted on top, so paint in reverse order).
+        shadows = textbox.style['text_shadow']
+        if shadows != 'none':
+            for color, offset_x, offset_y, blur in reversed(shadows):
+                if color is None or color == 'currentcolor':
+                    color = textbox.style['color']
+                if color.alpha == 0:
+                    continue
+                with stream.stacked():
+                    stream.set_color(color)
+                    if blur > 0:
+                        # Approximate the blur by lowering the opacity (sharp edge).
+                        stream.set_alpha(max(0.1, color.alpha / (1 + blur)))
+                    stream.begin_text()
+                    draw_first_line(
+                        stream, textbox, text_overflow, block_ellipsis,
+                        Matrix(d=-1, e=x + offset_x, f=y + offset_y))
+                    stream.end_text()
 
-    stream.set_color(textbox.style['color'])
-    stream.begin_text()
-    emojis = draw_first_line(
-        stream, textbox, text_overflow, block_ellipsis, Matrix(d=-1, e=x, f=y))
-    stream.end_text()
+        stream.set_color(textbox.style['color'])
+        stream.begin_text()
+        emojis = draw_first_line(
+            stream, textbox, text_overflow, block_ellipsis, Matrix(d=-1, e=x, f=y))
+        stream.end_text()
 
-    # Draw emojis.
-    draw_emojis(stream, textbox.style, x, y, emojis)
+        # Draw emojis.
+        draw_emojis(stream, textbox.style, x, y, emojis)
 
-    # Draw line through.
-    if 'line-through' in text_decoration_values:
-        thickness = textbox.pango_layout.strikethrough_thickness
-        offset_y = textbox.baseline - textbox.pango_layout.strikethrough_position
-        draw_text_decoration(
-            stream, textbox, offset_x, offset_y, thickness, text_decoration_color)
-    textbox.pango_layout.deactivate()
+        # Draw line through.
+        if 'line-through' in text_decoration_values:
+            thickness = textbox.pango_layout.strikethrough_thickness
+            offset_y = textbox.baseline - textbox.pango_layout.strikethrough_position
+            draw_text_decoration(
+                stream, textbox, offset_x, offset_y, thickness, text_decoration_color)
+        textbox.pango_layout.deactivate()
 
 
 def draw_emojis(stream, style, x, y, emojis):

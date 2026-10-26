@@ -1072,6 +1072,22 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+@property('overprint', proprietary=True)
+@single_keyword
+def overprint(keyword):
+    """``overprint`` property validation."""
+    return keyword in ('none', 'fill', 'stroke', 'all')
+
+
+@property('overprint-mode', proprietary=True)
+@single_token
+def overprint_mode(token):
+    """``overprint-mode`` property validation."""
+    number = get_number(token, integer=True)
+    if number is not None and getattr(number, 'value', number) in (0, 1):
+        return getattr(number, 'value', number)
+
+
 @property('comb', proprietary=True)
 @single_keyword
 def comb(keyword):
