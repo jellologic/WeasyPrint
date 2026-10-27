@@ -240,3 +240,44 @@ def test_container_style_query_container_excluded():
     body, = html.children
     container, = body.children
     assert container.style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_shorthand():
+    # The container shorthand sets both the name and the type.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .slot { container: wide / inline-size }
+        .narrow { container: narrow / inline-size }
+        .half { width: 50% }
+        .quarter { width: 25% }
+        @container wide (min-width: 50px) { .card { border: 2px solid } }
+      </style>
+      <div class="slot half"><div class="card" id="ca">a</div></div>
+      <div class="slot narrow quarter"><div class="card" id="cb">b</div></div>
+    ''')
+    # The rule targets the container named "wide": the quarter slot
+    # satisfies the width but has no matching name.
+    assert find_card(page, 'ca').style['border_left_width'] == 2
+    assert find_card(page, 'cb').style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_shorthand_bare_type():
+    # A bare type keyword in the shorthand names no container.
+    page, = render_pages('''
+      <style>
+        @page { size: 400px 100px; margin: 0 }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        .slot { container: inline-size }
+        .half { width: 50% }
+        .quarter { width: 25% }
+        @container (min-width: 150px) { .card { border: 2px solid } }
+      </style>
+      <div class="slot half"><div class="card" id="ca">a</div></div>
+      <div class="slot quarter"><div class="card" id="cb">b</div></div>
+    ''')
+    assert find_card(page, 'ca').style['border_left_width'] == 2
+    assert find_card(page, 'cb').style['border_left_width'] == 0

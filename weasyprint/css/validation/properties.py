@@ -1129,22 +1129,60 @@ def weasy_break_before_min_space(token):
     return get_length(token, percentage=True)
 
 
+def _expand_inset_values(arguments):
+    """Expand 1–4 lengths margin-style: top right bottom left."""
+    count = len(arguments)
+    if count not in (1, 2, 3, 4):
+        return
+    values = [get_length(token, percentage=True) for token in arguments]
+    if any(value is None for value in values):
+        return
+    if count == 1:
+        return values[0], values[0], values[0], values[0]
+    if count == 2:
+        return values[0], values[1], values[0], values[1]
+    if count == 3:
+        return values[0], values[1], values[2], values[1]
+    return tuple(values)
+
+
 @property()
 def object_view_box(tokens):
     """Validation for the ``object-view-box`` property."""
     if get_single_keyword(tokens) == 'none':
         return 'none'
-    if (
+    if not (
             len(tokens) == 1 and tokens[0].type == 'function' and
-            tokens[0].lower_name == 'inset'):
-        arguments = [
-            token for token in tokens[0].arguments
-            if token.type != 'whitespace']
-        if len(arguments) == 4:
-            values = [
-                get_length(token, percentage=True) for token in arguments]
-            if all(value is not None for value in values):
-                return tuple(values)
+            tokens[0].lower_name in ('inset', 'rect', 'xywh')):
+        return
+    function = tokens[0]
+    arguments = [
+        token for token in function.arguments if token.type != 'whitespace']
+    if function.lower_name == 'inset':
+        # 1–4 insets, expanded margin-style.
+        return _expand_inset_values(arguments)
+    if function.lower_name == 'rect':
+        # Four edges, 'auto' meaning the box edge.
+        if len(arguments) != 4:
+            return
+        values = []
+        for token in arguments:
+            if get_keyword(token) == 'auto':
+                values.append(ZERO_PIXELS)
+                continue
+            value = get_length(token, percentage=True)
+            if value is None:
+                return
+            values.append(value)
+        return tuple(values)
+    # xywh() takes the rectangle from the top-left corner: x, y, width
+    # and height. The edges are resolved at layout time.
+    if len(arguments) != 4:
+        return
+    values = [get_length(token, percentage=True) for token in arguments]
+    if any(value is None for value in values):
+        return
+    return ('xywh', *values)
 
 
 @property('keep-with-next', proprietary=True)
@@ -1176,11 +1214,18 @@ def row_orphans_widows(token):
         return number.value
 
 
-@property('text-wrap')
+@property('text-wrap-style')
 @single_keyword
-def text_wrap(keyword):
-    """``text-wrap`` property validation."""
-    return keyword in ('wrap', 'nowrap', 'balance', 'pretty', 'stable')
+def text_wrap_style(keyword):
+    """``text-wrap-style`` property validation."""
+    return keyword in ('auto', 'balance', 'pretty', 'stable')
+
+
+@property('text-wrap-mode')
+@single_keyword
+def text_wrap_mode(keyword):
+    """``text-wrap-mode`` property validation."""
+    return keyword in ('wrap', 'nowrap')
 
 
 @property('margin-trim')

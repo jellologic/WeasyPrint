@@ -671,3 +671,73 @@ def test_object_view_box_lengths(assert_pixels):
               object-view-box: inset(0 2px 2px 0) }
       </style>
       <div><img src="pattern.png"></div>''')
+
+
+@assert_no_logs
+def test_object_view_box_one_value_inset(assert_pixels):
+    # A one-value inset crops every edge uniformly: the red pixel of the
+    # pattern is cut away.
+    assert_pixels('''
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+    ''', '''
+      <style>
+        @page { size: 8px; margin: 0 }
+        body { margin: 0; font-size: 0 }
+        img { display: block; width: 8px; height: 8px;
+              image-rendering: pixelated;
+              object-view-box: inset(1px) }
+      </style>
+      <div><img src="pattern.png"></div>''')
+
+
+@assert_no_logs
+def test_object_view_box_rect(assert_pixels):
+    # rect() takes the edges from the box sides, 'auto' meaning no inset.
+    assert_pixels('''
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+    ''', '''
+      <style>
+        @page { size: 8px; margin: 0 }
+        body { margin: 0; font-size: 0 }
+        img { display: block; width: 8px; height: 8px;
+              image-rendering: pixelated;
+              object-view-box: rect(0 2px 2px 0) }
+      </style>
+      <div><img src="pattern.png"></div>''')
+
+
+@assert_no_logs
+def test_object_view_box_xywh(assert_pixels):
+    # xywh() takes the rectangle from the top-left corner.
+    assert_pixels('''
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      rrrrBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+      BBBBBBBB
+    ''', '''
+      <style>
+        @page { size: 8px; margin: 0 }
+        body { margin: 0; font-size: 0 }
+        img { display: block; width: 8px; height: 8px;
+              image-rendering: pixelated;
+              object-view-box: xywh(0 0 2px 2px) }
+      </style>
+      <div><img src="pattern.png"></div>''')

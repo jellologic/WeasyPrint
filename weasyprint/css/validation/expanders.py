@@ -16,10 +16,10 @@ from .properties import (  # isort:skip
     background_attachment, background_image, background_position, background_repeat,
     background_size, block_ellipsis, border_image_source, border_image_slice,
     border_image_width, border_image_outset, border_image_repeat, border_style,
-    border_width, box, column_count, column_width, flex_basis, flex_direction,
-    flex_grow_shrink, flex_wrap, font_family, font_size, font_stretch, font_style,
-    font_variant_caps, font_weight, gap, grid_line, grid_template,
-    line_height,
+    border_width, box, column_count, column_width, container_name, flex_basis,
+    flex_direction, flex_grow_shrink, flex_wrap, font_family, font_size,
+    font_stretch, font_style, font_variant_caps, font_weight, gap, grid_line,
+    grid_template, line_height,
     list_style_image, list_style_position, list_style_type, mask_border_mode,
     other_colors, overflow, overflow_wrap, text_decoration_thickness,
     validate_non_shorthand)
@@ -1155,6 +1155,52 @@ def expand_place_self(tokens, name):
     first, rest = split
     yield 'align-self', list(first)
     yield 'justify-self', list(rest) if rest else list(first)
+
+
+@expander('text-wrap')
+@generic_expander('text-wrap-style', 'text-wrap-mode')
+def expand_text_wrap(tokens, name):
+    """Expand the ``text-wrap`` shorthand property."""
+    keywords = [get_keyword(token) for token in tokens]
+    style = [
+        token for token, keyword in zip(tokens, keywords)
+        if keyword in ('auto', 'balance', 'pretty', 'stable')]
+    mode = [
+        token for token, keyword in zip(tokens, keywords)
+        if keyword in ('wrap', 'nowrap')]
+    if len(style) + len(mode) != len(tokens):
+        raise InvalidValues(f'invalid {name} shorthand')
+    if style:
+        yield 'text-wrap-style', style
+    if mode:
+        yield 'text-wrap-mode', mode
+
+
+@expander('container')
+@generic_expander('container-name', 'container-type')
+def expand_container(tokens, name):
+    """Expand the ``container`` shorthand property."""
+    slash = next(
+        (i for i, token in enumerate(tokens)
+         if token.type == 'literal' and token.value == '/'), None)
+    if slash is None:
+        keyword = get_single_keyword(tokens)
+        if keyword in ('normal', 'size', 'inline-size'):
+            # A bare container type, with no name.
+            yield 'container-type', list(tokens)
+        else:
+            if container_name(tokens) is None:
+                raise InvalidValues(f'invalid {name} shorthand')
+            yield 'container-name', list(tokens)
+        return
+    name_tokens = tokens[:slash]
+    type_tokens = tokens[slash + 1:]
+    if not name_tokens or len(type_tokens) != 1:
+        raise InvalidValues(f'invalid {name} shorthand')
+    if container_name(name_tokens) is None:
+        raise InvalidValues(f'invalid {name} shorthand')
+    yield 'container-name', list(name_tokens)
+    yield 'container-type', list(type_tokens)
 
 
 

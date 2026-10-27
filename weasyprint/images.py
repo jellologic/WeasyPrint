@@ -238,11 +238,20 @@ class RasterImage:
             pass
         if view_box and view_box != 'none':
             width, height = self.width, self.height
-            top, right, bottom, left = (
-                view_box_edge(value, size) for value, size in zip(
-                    view_box, (height, width, height, width)))
-            box_width = width - left - right
-            box_height = height - top - bottom
+            if view_box[0] == 'xywh':
+                _, x, y, box_width, box_height = view_box
+                left = view_box_edge(x, width)
+                top = view_box_edge(y, height)
+                box_width = view_box_edge(box_width, width)
+                box_height = view_box_edge(box_height, height)
+                right = width - left - box_width
+                bottom = height - top - box_height
+            else:
+                top, right, bottom, left = (
+                    view_box_edge(value, size) for value, size in zip(
+                        view_box, (height, width, height, width)))
+                box_width = width - left - right
+                box_height = height - top - bottom
             if box_width > 0 and box_height > 0:
                 u0, uw = left / width, box_width / width
                 v0, vh = bottom / height, box_height / height

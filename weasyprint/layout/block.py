@@ -415,7 +415,7 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
     # text-wrap: balance — narrow the line-breaking width so that the
     # lines of a short block (single font run, at most 6 lines) equalise,
     # keeping the same line count as greedy wrapping.
-    if box.style['text_wrap'] in ('balance', 'pretty') and not skip_stack:
+    if box.style['text_wrap_style'] in ('balance', 'pretty') and not skip_stack:
         from ..text.ffi import pango
         from ..text.line_break import create_layout
         text_box_children = [
