@@ -71,7 +71,7 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
             skipped_rows = 0
         if not split_cells and not has_header:
             _, horizontal_borders = table.collapsed_border_grid
-            if horizontal_borders:
+            if horizontal_borders and skipped_rows < len(horizontal_borders):
                 table.border_top_width = max(
                     width for _, (_, width, _)
                     in horizontal_borders[skipped_rows]) / 2
@@ -222,7 +222,24 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
                         avoid_page_break(cell.style['break_inside'], context)
                         for cell in row.children))
                 if avoid_break:
-                    resume_at = {index_row: {}}
+                    # -weasy-row-widows still holds: when the rows laid
+                    # exceed the keep limit, break earlier so that the
+                    # next fragment keeps enough rows. An avoid only
+                    # removes break opportunities, it never re-allows one
+                    # that widows forbids.
+                    widows_keep = len(group.children) - widows
+                    laid_keep = widows_keep - skip
+                    if 0 <= laid_keep < index_row and (
+                            widows_keep >= orphans and
+                            not avoid_page_break(
+                                group.style['break_inside'], context)):
+                        dropped_rows = new_group_children[laid_keep:]
+                        remove_placeholders(
+                            context, dropped_rows, absolute_boxes, fixed_boxes)
+                        del new_group_children[laid_keep:]
+                        resume_at = {widows_keep: {}}
+                    else:
+                        resume_at = {index_row: {}}
                     remove_placeholders(
                         context, new_row_children, absolute_boxes, fixed_boxes)
                     break
@@ -326,20 +343,27 @@ def table_layout(context, table, bottom_space, skip_stack, containing_block,
                     # -weasy-row-widows: leave at least this many rows for
                     # the next fragment by moving rows there.
                     widows_keep = len(group.children) - widows
+                    laid_keep = widows_keep - skip
                     rows_before = len(new_group_children)
                     if (
-                            rows_before > widows_keep >= orphans and
+                            0 <= laid_keep < rows_before and
+                            widows_keep >= orphans and
                             not avoid_page_break(
                                 group.style['break_inside'], context)):
-                        dropped_rows = new_group_children[widows_keep:]
+                        dropped_rows = new_group_children[laid_keep:]
                         remove_placeholders(
                             context, dropped_rows, absolute_boxes, fixed_boxes)
-                        new_group_children = new_group_children[:widows_keep]
-                        last_row = new_group_children[-1]
-                        position_y = (
-                            last_row.position_y + last_row.height +
-                            border_spacing_y)
-                        resume_at = {skip + widows_keep: None}
+                        new_group_children = new_group_children[:laid_keep]
+                        resume_at = {widows_keep: None}
+                        if new_group_children:
+                            last_row = new_group_children[-1]
+                            position_y = (
+                                last_row.position_y + last_row.height +
+                                border_spacing_y)
+                        else:
+                            # The whole laid part moves to the next
+                            # fragment.
+                            position_y = group.position_y
                         break
                     previous_row = new_group_children[-1]
                     page_break = block_level_page_break(previous_row, row)
