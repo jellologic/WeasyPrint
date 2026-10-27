@@ -390,14 +390,22 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
         if size != 1:
             continue
         tracks_children[coord - implicit_start].append(child)
-    iterable = zip(tracks_children, sizing_functions, tracks_sizes)
-    for children, (min_function, max_function), sizes in iterable:
+    iterable = enumerate(zip(tracks_children, sizing_functions, tracks_sizes))
+    for row_index, (children, (min_function, max_function), sizes) in iterable:
         if not children:
             continue
         if direction == 'y':
             # TODO: Find a better way to get height.
             from .block import block_level_layout
             height = 0
+            # Lay the item out at its real position: line-snap and
+            # box-snap translate lines against the absolute line grid,
+            # so the measurement has to agree with the final layout.
+            # (Assumes start alignment for the items in the row.)
+            row_top = (
+                containing_block.content_box_y() +
+                sum(size[0] for size in tracks_sizes[:row_index]) +
+                row_index * gap)
             for child in children:
                 x, y, width, span = children_positions[child]
                 # The item is laid out across its spanned tracks,
@@ -415,7 +423,7 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
                     child.subgrid_rows_sizes = [(0, inf)] * (span or 1)
                     child.style['align_items'] = ('start',)
                 child.position_x = 0
-                child.position_y = 0
+                child.position_y = row_top
                 parent = boxes.BlockContainerBox.anonymous_from(containing_block, ())
                 resolve_percentages(parent, containing_block)
                 parent.position_x = child.position_x
