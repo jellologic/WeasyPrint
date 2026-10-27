@@ -344,12 +344,40 @@ def get_font_metric_ratio(style, metric):
     hb_face = get_pango_font_hb_face(font)
     data = get_hb_object_data(hb_face)
     if data:
-        ttfont = TTFont(BytesIO(data))
-        table = ttfont['OS/2']
-        upem = ttfont['head'].unitsPerEm
-        height = (
-            table.sCapHeight if metric == 'cap-height' else table.sxHeight)
-        value = height / upem if upem else 0
+        height = 0
+        upem = 0
+        try:
+            # The blob of a font collection holds all of its faces: pick
+            # the one Pango selected.
+            ttfont = TTFont(
+                BytesIO(data), fontNumber=harfbuzz.hb_face_get_index(hb_face))
+            table = ttfont.get('OS/2')
+            upem = ttfont['head'].unitsPerEm
+            if table is not None:
+                height = (
+                    getattr(table, 'sCapHeight', 0) if metric == 'cap-height'
+                    else getattr(table, 'sxHeight', 0))
+        except Exception:
+            height = 0
+        if height:
+            value = height / upem if upem else 0
+        else:
+            # The face has no OS/2 cap-height or x-height (OS/2 version
+            # below 2, or no OS/2 at all): measure the reference glyph’s
+            # bounding box, as browsers do.
+            reference = ord('H') if metric == 'cap-height' else ord('x')
+            hb_font = harfbuzz.hb_font_create(hb_face)
+            with ffi.new('hb_codepoint_t *') as glyph:
+                found = harfbuzz.hb_font_get_nominal_glyph(
+                    hb_font, reference, glyph)
+                harfbuzz.hb_font_destroy(hb_font)
+            if found:
+                ink = ffi.new('PangoRectangle *')
+                pango.pango_font_get_glyph_extents(
+                    font, glyph[0], ink, ffi.NULL)
+                font_size = style['font_size'] * TO_UNITS
+                if font_size:
+                    value = ink.height / (font_size * TO_UNITS)
     cache[key] = value
     return value
 
@@ -380,20 +408,27 @@ def get_font_real_style(style):
     hb_face = get_pango_font_hb_face(font)
     data = get_hb_object_data(hb_face)
     if data:
-        ttfont = TTFont(BytesIO(data))
-        os2 = ttfont.get('OS/2')
-        head = ttfont.get('head')
-        if os2 is not None:
-            weight = os2.usWeightClass or 400
-            italic = bool(os2.fsSelection & 1)
-        elif head is not None:
-            weight = 700 if head.macStyle & 1 else 400
-            italic = bool(head.macStyle & 2)
-        gsub = ttfont.get('GSUB')
-        if gsub is not None and gsub.table.FeatureList is not None:
-            small_caps = 'smcp' in {
-                record.FeatureTag
-                for record in gsub.table.FeatureList.FeatureRecord}
+        try:
+            # The blob of a font collection holds all of its faces: pick
+            # the one Pango selected.
+            ttfont = TTFont(
+                BytesIO(data), fontNumber=harfbuzz.hb_face_get_index(hb_face))
+        except Exception:
+            ttfont = None
+        if ttfont is not None:
+            os2 = ttfont.get('OS/2')
+            head = ttfont.get('head')
+            if os2 is not None:
+                weight = os2.usWeightClass or 400
+                italic = bool(os2.fsSelection & 1)
+            elif head is not None:
+                weight = 700 if head.macStyle & 1 else 400
+                italic = bool(head.macStyle & 2)
+            gsub = ttfont.get('GSUB')
+            if gsub is not None and gsub.table.FeatureList is not None:
+                small_caps = 'smcp' in {
+                    record.FeatureTag
+                    for record in gsub.table.FeatureList.FeatureRecord}
     cache[key] = (weight, italic, small_caps)
     return cache[key]
 

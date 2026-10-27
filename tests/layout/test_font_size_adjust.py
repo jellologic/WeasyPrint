@@ -44,3 +44,34 @@ def test_font_size_adjust_from_font():
             box for box in page.descendants()
             if type(box).__name__ == 'LineBox']
         assert lines[1].height == lines[0].height
+
+
+@assert_no_logs
+def test_font_size_adjust_without_os2_metrics():
+    # Fonts whose OS/2 table has no sCapHeight/sxHeight (version below 2),
+    # or that live in a collection (.ttc), must not crash the render: the
+    # reference glyph is measured, or the adjustment is skipped.
+    # https://github.com/Kozea/WeasyPrint/issues/2161
+    render_pages('''
+      <style>
+        @page { size: 100px 40px; margin: 0 }
+        body { margin: 0; font-size: 12px }
+        code { font: 12px monospace; font-size-adjust: cap-height 0.7 }
+      </style>
+      <p><code>H</code></p>
+    ''')
+    render_pages('''
+      <style>
+        @page { size: 100px 40px; margin: 0 }
+        body { margin: 0; font-size: 12px }
+        code { font: 12px monospace; font-size-adjust: ex-height 0.5 }
+      </style>
+      <p><code>x</code></p>
+    ''')
+    render_pages('''
+      <style>
+        @page { size: 100px 40px; margin: 0 }
+        body { margin: 0; font: 12px monospace; font-synthesis: none }
+      </style>
+      <p>x</p>
+    ''')
