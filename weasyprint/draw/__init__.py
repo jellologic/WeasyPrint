@@ -857,21 +857,46 @@ def draw_block_level(page, stream, blocks_and_cells):
                 # Reading top-to-bottom, first column at the right,
                 # glyphs rotated 90° clockwise.
                 transform = (0, 1, -1, 0, right + top, top - left)
+                with stream.stacked():
+                    stream.transform(*transform)
+                    if isinstance(block, boxes.ReplacedBox):
+                        with stream.marked(block, 'Figure'):
+                            draw_replacedbox(stream, block)
+                    elif block.children:
+                        for child in block.children:
+                            draw_inline_level(stream, page, child)
             elif mode == 'vertical-lr':
-                # Reading top-to-bottom, columns stacking left-to-right.
-                transform = (0, 1, 1, 0, left - top, top - left)
+                # Reading top-to-bottom, columns stacking left-to-right,
+                # with the same clockwise glyph rotation as vertical-rl:
+                # each laid line (top-to-bottom in the swapped frame, its
+                # baseline at position_y + baseline) is translated to its
+                # column from the left, instead of mirroring the run
+                # (which would mirror the glyphs).
+                with stream.stacked():
+                    if isinstance(block, boxes.ReplacedBox):
+                        with stream.marked(block, 'Figure'):
+                            draw_replacedbox(stream, block)
+                    elif block.children:
+                        for child in block.children:
+                            translate_x = (
+                                left - top + 2 * child.position_y +
+                                child.baseline)
+                            with stream.stacked():
+                                stream.transform(
+                                    0, 1, -1, 0, translate_x, top - left)
+                                draw_inline_level(stream, page, child)
             else:  # sideways-lr
                 # Reading bottom-to-top, glyphs rotated 90°
                 # counter-clockwise, columns left-to-right.
                 transform = (0, -1, 1, 0, left - top, bottom + left)
-            with stream.stacked():
-                stream.transform(*transform)
-                if isinstance(block, boxes.ReplacedBox):
-                    with stream.marked(block, 'Figure'):
-                        draw_replacedbox(stream, block)
-                elif block.children:
-                    for child in block.children:
-                        draw_inline_level(stream, page, child)
+                with stream.stacked():
+                    stream.transform(*transform)
+                    if isinstance(block, boxes.ReplacedBox):
+                        with stream.marked(block, 'Figure'):
+                            draw_replacedbox(stream, block)
+                    elif block.children:
+                        for child in block.children:
+                            draw_inline_level(stream, page, child)
         else:
             if isinstance(block, boxes.ReplacedBox):
                 with stream.marked(block, 'Figure'):
