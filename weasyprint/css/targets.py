@@ -199,9 +199,14 @@ class TargetCollector:
                 item.page_maker_index = page_maker_index
                 cache = item.cached_page_counter_values
                 # The last fragment is unknown yet: it is at least the
-                # first one.
-                item.cached_last_page_counter_values = copy.deepcopy(
-                    page_counter_values)
+                # first one. The first page may be laid out again without
+                # the later ones, so a later page already seen keeps its
+                # values.
+                last_page = item.cached_last_page_counter_values.get(
+                    'page', [0])[-1]
+                if last_page < page_counter_values.get('page', [0])[-1]:
+                    item.cached_last_page_counter_values = copy.deepcopy(
+                        page_counter_values)
             if cache != page_counter_values:
                 cache.clear()
                 cache.update(page_counter_values)

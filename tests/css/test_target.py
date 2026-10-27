@@ -259,3 +259,61 @@ def test_target_counter_last_and_page_range():
     assert re.search(r'short\s+2', texts)
     assert re.search(r'long\s+3–4', texts)
     assert re.search(r'last\s+4', texts)
+
+
+@assert_no_logs
+def test_target_page_range_remade_first_page():
+    # A reference whose target-counter sits on the target’s first page
+    # makes that page be laid out again. The range must keep the last
+    # page cached for the target’s later fragments.
+    def assert_range_matches_span(pages):
+        texts = ' '.join(
+            box.text for box in pages[0].descendants()
+            if type(box).__name__ == 'TextBox')
+        section_pages = [
+            i for i, page in enumerate(pages, 1)
+            if any(getattr(box, 'element_tag', '') == 'section'
+                   for box in page.descendants())]
+        first, last = section_pages[0], section_pages[-1]
+        if first == last:
+            expected = r'long\s+%d' % first
+        else:
+            expected = r'long\s+%d–%d' % (first, last)
+        assert re.search(expected, texts)
+
+    markup = '''
+      <div id="toc"><a href="#long">long</a></div>
+      <section id="long">
+        <p><a class="pg" href="#x">see</a></p>
+        <p>def</p><div style="height: 150px"></div>
+        <p id="x">x</p>
+      </section>
+    '''
+
+    # The reference forwards from the target’s first page (page 2).
+    pages = render_pages('''
+      <style>
+        @page { size: 200px 100px; margin: 10px }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        p { margin: 0 }
+        section { break-before: page }
+        #toc a::after {
+          content: ' ' -weasy-target-page-range(attr(href), '–') }
+        a.pg::after { content: ' p. ' target-counter(attr(href), page) }
+      </style>
+    ''' + markup)
+    assert_range_matches_span(pages)
+
+    # Same with the target starting on the referencing element’s own
+    # page: that page is always laid out again to resolve the reference.
+    pages = render_pages('''
+      <style>
+        @page { size: 200px 100px; margin: 10px }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        p { margin: 0 }
+        #toc a::after {
+          content: ' ' -weasy-target-page-range(attr(href), '–') }
+        a.pg::after { content: ' p. ' target-counter(attr(href), page) }
+      </style>
+    ''' + markup)
+    assert_range_matches_span(pages)
