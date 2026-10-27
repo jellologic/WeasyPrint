@@ -1873,3 +1873,62 @@ def test_string_set_all_on_page():
         texts.append(''.join(
             getattr(node, 'text', '') for node in margin.descendants()))
     assert texts == ['', '2-first 2-last', '']
+
+
+@assert_no_logs
+def test_running_inline_with_block_child():
+    # An inline running element with block-level children does not crash
+    # the layout of the source document, and its whole content is
+    # displayed in the margin box (blockified there).
+    # https://github.com/Kozea/WeasyPrint/issues/2888
+    pages = render_pages('''
+      <style>
+        @page { size: 300px 200px; margin: 20px;
+                @right-top { content: element(tab) } }
+        .tab { position: running(tab) }
+        .tab div { width: 0.2in; height: 1.2in }
+      </style>
+      <h2><span class="tab"><div>Electrical</div></span>Electrical</h2>
+    ''')
+    page, = pages
+    texts = [
+        box.text for box in page.descendants()
+        if type(box).__name__ == 'TextBox']
+    # Once in the margin box, once in the heading flow.
+    assert texts.count('Electrical') == 2
+    # The block child stays inside the running element: it is not
+    # displayed in the source flow.
+    html, margin = page.children
+    body_texts = [
+        box.text for box in html.descendants()
+        if type(box).__name__ == 'TextBox']
+    assert body_texts == ['Electrical']
+
+
+@assert_no_logs
+def test_running_block_keeps_block_children():
+    # A block running element with block children keeps them inside: its
+    # content is not part of the surrounding flow.
+    pages = render_pages('''
+      <style>
+        @page { size: 300px 200px; margin: 20px;
+                @bottom-center { content: element(foot) } }
+        .foot { position: running(foot) }
+      </style>
+      <p>before</p>
+      <div class="foot"><div>tab</div></div>
+      <p>after</p>
+    ''')
+    page, = pages
+    html, margin = page.children
+    body_texts = [
+        box.text for box in html.descendants()
+        if type(box).__name__ == 'TextBox']
+    # The tab's content is not part of the body's flow.
+    assert 'tab' not in body_texts
+    assert 'before' in body_texts
+    assert 'after' in body_texts
+    margin_texts = [
+        box.text for box in margin.descendants()
+        if type(box).__name__ == 'TextBox']
+    assert 'tab' in ''.join(margin_texts)

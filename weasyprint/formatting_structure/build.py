@@ -589,6 +589,15 @@ def compute_content_list(content_list, parent_box, counter_values, css_token,
             for running_box in new_boxes:
                 new_box = running_box.deepcopy()
                 new_box.style['position'] = 'static'
+                if isinstance(new_box, boxes.InlineBox) and any(
+                        isinstance(child, boxes.BlockLevelBox)
+                        for child in new_box.descendants()):
+                    # An inline-level running element with block-level
+                    # content is blockified: margin boxes are block
+                    # containers, and the whole content of a running
+                    # element is displayed there.
+                    new_box = boxes.BlockBox.anonymous_from(
+                        new_box, new_box.children)
                 if isinstance(new_box, boxes.ParentBox):
                     for child in new_box.descendants():
                         if child.style['content'] in ('normal', 'none'):
@@ -1547,7 +1556,7 @@ def _inner_block_in_inline(box, skip_stack=None):
             block_level_box = child
             index += 1  # Resume *after* the block
         else:
-            if isinstance(child, boxes.InlineBox):
+            if isinstance(child, boxes.InlineBox) and not child.is_running():
                 recursion = _inner_block_in_inline(child, skip_stack)
                 skip_stack = None
                 new_child, block_level_box, resume_at = recursion
