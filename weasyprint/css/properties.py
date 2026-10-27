@@ -444,6 +444,7 @@ TABLE_WRAPPER_BOX_PROPERTIES = {
     'counter_reset',
     'counter_set',
     'float',
+    'float_reference',
     'left',
     'margin_top',
     'margin_bottom',

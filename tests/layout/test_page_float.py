@@ -89,3 +89,48 @@ def test_page_float_top_next_page():
 
 def pages_list(page_1, page_2):
     return [page_1, page_2]
+
+
+@assert_no_logs
+def test_page_float_bottom_table():
+    # A table float takes the page-float path: its wrapper carries both
+    # the float and the float-reference values.
+    page, = render_pages('''
+      <style>
+        @page { size: 200px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 10pt }
+        section { height: 1in; margin: 0 }
+        aside { float: bottom; float-reference: page; display: table;
+                margin: 0; height: 0.5in }
+      </style>
+      <section>content</section>
+      <aside>foot</aside>
+    ''')
+    aside = find_box(page, 'aside')
+    section = find_box(page, 'section')
+    content_bottom = page.content_box_y() + page.height
+    assert abs(
+        aside.position_y + aside.margin_height() - content_bottom) < 1
+    assert section.position_y + section.margin_height() <= aside.position_y
+
+
+@assert_no_logs
+def test_page_float_top_table():
+    # A table float with "float: top" goes to the top of the next page,
+    # like other page floats.
+    page_1, page_2 = render_pages('''
+      <style>
+        @page { size: 200px 200px; margin: 0 }
+        body { font-family: weasyprint; font-size: 10pt }
+        section { height: 1in; margin: 0 }
+        aside { float: top; float-reference: page; display: table;
+                margin: 0; height: 0.5in }
+      </style>
+      <section>content</section>
+      <aside>head</aside>
+    ''')
+    aside = find_box(page_2, 'aside')
+    assert aside.position_y == page_2.content_box_y()
+    assert not [
+        box for box in page_1.descendants()
+        if getattr(box, 'element_tag', '') == 'aside']
