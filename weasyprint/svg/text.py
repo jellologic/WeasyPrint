@@ -133,7 +133,17 @@ def text(svg, node, font_size):
     svg.stream.begin_text()
     emoji_lines = []
 
-    # Draw letters
+    # paint-order: when the stroke comes first, the whole run is stroked
+    # and then filled, so that a wide halo doesn’t cover the previous
+    # glyph’s fill.
+    order = node.get('paint-order', 'fill stroke markers').split()
+    stroke_first = (
+        'stroke' in order and (
+            'fill' not in order or
+            order.index('stroke') < order.index('fill')))
+
+    # Draw letters: compute each letter’s position and matrix.
+    text_boxes = []
     for i, ((x, y, dx, dy, r), letter) in enumerate(letters_positions):
         if x:
             svg.cursor_d_position[0] = 0
@@ -161,31 +171,37 @@ def text(svg, node, font_size):
             node.text_bounding_box, points)
 
         layout.reactivate(style)
-        # paint-order: when the stroke comes first, draw the text twice,
-        # stroke only behind, then fill on top, to paint a halo.
-        order = node.get('paint-order', 'fill stroke markers').split()
-        stroke_first = (
-            'stroke' in order and (
-                'fill' not in order or
-                order.index('stroke') < order.index('fill')))
         matrix = Matrix(a=scale_x, d=-1, e=x_position, f=y_position)
         if angle:
             a, c = cos(angle), sin(angle)
             matrix = Matrix(a, -c, c, a) @ matrix
         text_box = TextBox(layout, style)
-        if stroke_first:
+        if stroke_first and node.get('stroke') not in (None, 'none'):
+            # Stroke this letter now; all the fills are painted on top
+            # after the loop, so that a wide halo doesn’t cover the
+            # previous glyph’s fill. fill_stroke computes the text
+            # rendering mode from the node paints: set the pass mode
+            # after it.
             svg.fill_stroke(node, font_size, text=True)
             svg.stream.set_text_rendering(1)
             draw_first_line(svg.stream, text_box, 'none', 'none', matrix)
-            svg.fill_stroke(node, font_size, text=True)
-            svg.stream.set_text_rendering(0)
-            emojis = draw_first_line(
-                svg.stream, text_box, 'none', 'none', matrix)
         else:
             svg.fill_stroke(node, font_size, text=True)
             emojis = draw_first_line(
                 svg.stream, text_box, 'none', 'none', matrix)
-        emoji_lines.append((x, y, emojis))
+            emoji_lines.append((x, y, emojis))
+        text_boxes.append((text_box, matrix, (x, y)))
+
+    if stroke_first:
+        svg.fill_stroke(node, font_size, text=True)
+        svg.stream.set_text_rendering(0)
+        for text_box, matrix, position in text_boxes:
+            # The stroke pass deactivated the layout: reactivate it for
+            # the fill pass.
+            text_box.pango_layout.reactivate(text_box.style)
+            emojis = draw_first_line(
+                svg.stream, text_box, 'none', 'none', matrix)
+            emoji_lines.append((*position, emojis))
 
     svg.stream.end_text()
     svg.stream.pop_state()
