@@ -638,6 +638,35 @@ def get_quote(token):
         return keyword
 
 
+def _parse_target_link(token, base_url):
+    """Parse a link token of a ``target-*`` function.
+
+    Return ``('string', value)`` or ``('url', value)``, or None.
+
+    """
+    string_link = get_string(token)
+    if string_link is None:
+        return get_url(token, base_url)
+    return string_link
+
+
+def _looks_like_target(token):
+    """Whether a token can be an anchor reference.
+
+    Plain strings that do not start with ``#`` are not: they leave room
+    for plain-text arguments (such as page-number prefixes) next to
+    anchor references.
+
+    """
+    if token.type == 'function':
+        return token.name in ('attr', 'url')
+    if token.type == 'url':
+        return True
+    if token.type == 'string':
+        return token.value.startswith('#')
+    return False
+
+
 def get_target(token, base_url):
     """Parse a <target> token."""
     function = functions.Function(token)
@@ -652,7 +681,7 @@ def get_target(token, base_url):
         if len(arguments) not in (2, 3):
             return
     elif function.name == '-weasy-target-page-range':
-        if len(arguments) != 2:
+        if len(arguments) not in (2, 3, 4, 5):
             return
     elif function.name == 'target-text':
         if len(arguments) not in (1, 2):
@@ -662,21 +691,50 @@ def get_target(token, base_url):
 
     values = []
 
-    link = arguments.pop(0)
-    string_link = get_string(link)
-    if string_link is None:
-        url = get_url(link, base_url)
-        if url is None:
-            return
-        values.append(url)
-    else:
-        values.append(string_link)
+    link = _parse_target_link(arguments.pop(0), base_url)
+    if link is None:
+        return
+    values.append(link)
 
     if function.name == '-weasy-target-page-range':
         separator = get_string(arguments.pop(0))
         if separator is None:
             return
         values.append(separator)
+
+        # Optional end target, and optional prefixes for one page and
+        # for several ones.
+        end = single = plural = None
+        if arguments:
+            end_token = arguments.pop(0)
+            if _looks_like_target(end_token):
+                end = _parse_target_link(end_token, base_url)
+                if end is None:
+                    return
+            elif arguments:
+                # Two plain strings: the prefixes.
+                single = get_string(end_token)
+                plural = get_string(arguments.pop(0))
+                if single is None or plural is None:
+                    return
+                single, plural = single[1], plural[1]
+            else:
+                # A lone plain string is a prefix for one page.
+                single = get_string(end_token)
+                if single is None:
+                    return
+                single = single[1]
+        if arguments:
+            single = get_string(arguments.pop(0))
+            if single is None:
+                return
+            single = single[1]
+        if arguments:
+            plural = get_string(arguments.pop(0))
+            if plural is None:
+                return
+            plural = plural[1]
+        values += (end, single, plural)
         return (f'{function.name}()', tuple(values))
 
     if (

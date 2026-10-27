@@ -504,7 +504,7 @@ def compute_content_list(content_list, parent_box, counter_values, css_token,
                 (anchor_token, counter_name), counter_type = (
                     value[:2], value[-1])
             else:
-                anchor_token, separator = value
+                anchor_token, separator, end_token, single, plural = value
             anchor_name = targets.anchor_name_from_token(anchor_token)
             lookup_target = target_collector.lookup_target(
                 anchor_token, parent_box, css_token, parse_again)
@@ -524,13 +524,28 @@ def compute_content_list(content_list, parent_box, counter_values, css_token,
             else:
                 first = lookup_target.cached_page_counter_values.get(
                     'page', [0])[-1]
-                last = lookup_target.cached_last_page_counter_values.get(
-                    'page', [0])[-1]
+                if end_token is None:
+                    last = lookup_target.cached_last_page_counter_values.get(
+                        'page', [0])[-1]
+                else:
+                    # The range ends at the end target’s last fragment.
+                    end_name = targets.anchor_name_from_token(end_token)
+                    end_lookup = target_collector.lookup_target(
+                        end_token, parent_box, css_token, parse_again)
+                    if end_lookup.state != 'up-to-date':
+                        break
+                    end_missing = missing_target_counters.setdefault(
+                        end_name, ['page'])
+                    if 'page' not in end_missing:
+                        end_missing.append('page')
+                    last = end_lookup.cached_last_page_counter_values.get(
+                        'page', [0])[-1]
                 if separator[0] != 'string':
                     break
-                text = (
-                    str(first) if first == last
-                    else f'{first}{separator[1]}{last}')
+                if first == last:
+                    text = f'{single or ""}{first}'
+                else:
+                    text = f'{plural or ""}{first}{separator[1]}{last}'
             add_text(text)
         elif type_ == 'target-text()':
             anchor_token, text_style = value

@@ -625,15 +625,18 @@ def _content_list(style, values):
         elif value[0] in (
                 'target-counter()', 'target-counters()', 'target-text()',
                 '-weasy-target-counter-last()', '-weasy-target-page-range()'):
-            anchor_token = value[1][0]
-            if anchor_token[0] == 'attr()':
-                attr = compute_attr(style, anchor_token)
-                if attr is None:
-                    computed_value = None
-                else:
-                    computed_value = (value[0], (attr, *value[1][1:]))
+            computed_links = list(value[1])
+            for i, token in enumerate(computed_links):
+                if isinstance(token, tuple) and token[0] == 'attr()':
+                    attr = compute_attr(style, token)
+                    if attr is None:
+                        computed_links = None
+                        break
+                    computed_links[i] = attr
+            if computed_links is None:
+                computed_value = None
             else:
-                computed_value = value
+                computed_value = (value[0], tuple(computed_links))
         if computed_value is None:
             LOGGER.warning('Unable to compute %r value for content: %r' % (
                 style.element, ', '.join(str(item) for item in value)))

@@ -317,3 +317,72 @@ def test_target_page_range_remade_first_page():
       </style>
     ''' + markup)
     assert_range_matches_span(pages)
+
+
+@assert_no_logs
+def test_target_page_range_end_target_and_prefixes():
+    # -weasy-target-page-range() can take an end target (the range ends
+    # at its last fragment) and prefixes for one page and for several
+    # ones.
+    def toc(content):
+        return render_pages('''
+          <style>
+            @page { size: 300px 100px; margin: 10px }
+            body { margin: 0; font-family: weasyprint; font-size: 10px }
+            p { margin: 0 } section { break-before: page }
+            #toc a::after { content: ' ' %s }
+          </style>
+          <div id="toc">
+            <a href="#first" data-to="#last">tables</a>
+            <a href="#first" data-to="#same">same</a>
+            <a href="#first" data-to="#infirst">one</a>
+          </div>
+          <section id="first"><p>abc</p><span id="infirst">x</span></section>
+          <section id="last"><p>def</p><div style="height: 150px"></div></section>
+          <section id="same"><p>ghi</p></section>
+        ''' % content)
+
+    def texts_of(pages):
+        return ' '.join(
+            box.text for box in pages[0].descendants()
+            if type(box).__name__ == 'TextBox')
+
+    # Page 1 is the table of contents; #first is on page 2 (with
+    # #infirst), #last spans pages 3 and 4, #same is on page 5.
+    texts = texts_of(toc(
+        "-weasy-target-page-range(attr(href), '–', attr(data-to))"))
+    assert re.search(r'tables\s+2–4', texts)
+    assert re.search(r'same\s+2–5', texts)
+    assert re.search(r'one\s+2', texts)  # collapsed to one number
+
+    texts = texts_of(toc("-weasy-target-page-range('#first', '–', '#last')"))
+    assert re.search(r'tables\s+2–4', texts)
+
+    texts = texts_of(toc(
+        "-weasy-target-page-range("
+        "attr(href), '–', attr(data-to), 'p. ', 'pp. ')"))
+    assert re.search(r'tables\s+pp\.\s+2–4', texts)
+    assert re.search(r'same\s+pp\.\s+2–5', texts)
+    assert re.search(r'one\s+p\.\s+2', texts)  # singular prefix
+
+    # Prefixes without an end target.
+    pages = render_pages('''
+      <style>
+        @page { size: 200px 100px; margin: 10px }
+        body { margin: 0; font-family: weasyprint; font-size: 10px }
+        p { margin: 0 } section { break-before: page }
+        #toc a::after {
+          content: ' ' -weasy-target-page-range(
+            attr(href), '–', 'p. ', 'pp. ') }
+      </style>
+      <div id="toc">
+        <a href="#short">short</a>
+        <a href="#long">long</a>
+      </div>
+      <section id="short"><p>abc</p></section>
+      <section id="long"><p>def</p><div style="height: 90px"></div></section>
+    ''')
+    texts = texts_of(pages)
+    assert re.search(r'short\s+p\.\s+2', texts)
+    # #long spans pages 3 and 4.
+    assert re.search(r'long\s+pp\.\s+3–4', texts)
