@@ -74,3 +74,32 @@ def test_filter_renders_differently(assert_different_renderings):
     html_no_filter = html.replace(' filter: invert(1)', '')
     assert_different_renderings(
         html, html_no_filter)
+
+
+@assert_no_logs
+def test_filter_every_source_format(tmp_path):
+    # The filter applies whatever the source format: an RGB PNG used to
+    # print black (the RGBA result written with the original RGB mode)
+    # and a JPEG disappeared (the PNG result declared as DCTDecode).
+    import base64
+    import io
+
+    images = {}
+    for name, mode, format_ in (
+            ('rgba', 'RGBA', 'PNG'), ('rgb', 'RGB', 'PNG'),
+            ('jpeg', 'RGB', 'JPEG')):
+        image_file = io.BytesIO()
+        Image.new(mode, (40, 20), (200, 16, 46)).save(
+            image_file, format=format_)
+        images[name] = base64.b64encode(image_file.getvalue()).decode()
+
+    for name, data in images.items():
+        target = tmp_path / f'{name}.png'
+        FakeHTML(string=f'''
+          <style>@page {{ size: 1in 0.5in; margin: 0; background: #fff }}</style>
+          <img src="data:image/png;base64,{data}"
+               style="width: 1in; filter: grayscale(1)">
+        ''').write_png(str(target))
+        pixel = Image.open(target).convert('RGB')
+        expected = round(0.2126 * 200 + 0.7152 * 16 + 0.0722 * 46)
+        assert pixel.getpixel((50, 20)) == (expected,) * 3, name

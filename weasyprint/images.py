@@ -280,6 +280,10 @@ class RasterImage:
         filtered.save(image_file, format='PNG')
         clone = copy.copy(self)
         clone.image_data = SimpleNamespace(data=image_file.getvalue())
+        # The filtered data is a PNG with an alpha channel, whatever the
+        # format and mode of the original image were.
+        clone.mode = filtered.mode
+        clone.format = 'PNG'
         digest = md5(
             repr(css_filters).encode(),
             usedforsecurity=False).hexdigest()[:8]
