@@ -846,24 +846,24 @@ def draw_block_level(page, stream, blocks_and_cells):
             isinstance(block.children[-1], boxes.LineBox))
         if vertical:
             # Vertical writing: the children are laid in a swapped frame
-            # (their inline axis runs along the box height). Rotate them
-            # into place per the writing mode.
-            if mode == 'vertical-lr':
-                # Columns stack left-to-right, glyphs clockwise.
-                transform = (0, -1, 1, 0, block.position_x,
-                             block.position_y + block.height)
-            elif mode == 'sideways-lr':
-                # Reads bottom-to-top, glyphs counterclockwise.
-                transform = (0, 1, 1, 0, block.position_x, block.position_y)
-            elif mode == 'sideways-rl':
-                # Reads top-to-bottom, glyphs counterclockwise.
-                transform = (0, 1, -1, 0, block.position_x + block.width,
-                             block.position_y)
-            else:
-                # vertical-rl: reads top-to-bottom, first column at the
-                # right, glyphs clockwise.
-                transform = (0, -1, -1, 0, block.position_x + block.width,
-                             block.position_y + block.height)
+            # (their inline axis runs along the box height), from the
+            # content box’s top-left corner. Rotate them into place per
+            # the writing mode.
+            left = block.position_x + block.border_left_width
+            top = block.position_y + block.border_top_width
+            right = block.position_x + block.width - block.border_right_width
+            bottom = block.position_y + block.height - block.border_bottom_width
+            if mode in ('vertical-rl', 'sideways-rl'):
+                # Reading top-to-bottom, first column at the right,
+                # glyphs rotated 90° clockwise.
+                transform = (0, 1, -1, 0, right + top, top - left)
+            elif mode == 'vertical-lr':
+                # Reading top-to-bottom, columns stacking left-to-right.
+                transform = (0, 1, 1, 0, left - top, top - left)
+            else:  # sideways-lr
+                # Reading bottom-to-top, glyphs rotated 90°
+                # counter-clockwise, columns left-to-right.
+                transform = (0, -1, 1, 0, left - top, bottom + left)
             with stream.stacked():
                 stream.transform(*transform)
                 if isinstance(block, boxes.ReplacedBox):
