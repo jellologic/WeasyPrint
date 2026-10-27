@@ -134,3 +134,29 @@ def test_page_float_top_table():
     assert not [
         box for box in page_1.descendants()
         if getattr(box, 'element_tag', '') == 'aside']
+
+
+@assert_no_logs
+def test_page_float_bottom_bordered_auto_height():
+    # A bottom page float whose bordered fixed-height content is taller
+    # than the height measured without borders still fits on its page:
+    # it must not be laid out again on a new one.
+    # https://github.com/Kozea/WeasyPrint/issues/2323
+    pages = render_pages('''
+      <style>
+        @page { size: 6in 6in; margin: 0.5in }
+        body { margin: 0 }
+        section { height: 3in }
+        aside { float: bottom; float-reference: page }
+        aside div { height: 1in; border: 1px solid }
+      </style>
+      <section>content</section>
+      <aside><div>foot</div></aside>
+    ''')
+    page, = pages
+    # The float fits: no extra page repeating it.
+    assert len(pages) == 1
+    aside = find_box(page, 'aside')
+    content_bottom = page.content_box_y() + page.height
+    assert abs(
+        aside.position_y + aside.margin_height() - content_bottom) < 1

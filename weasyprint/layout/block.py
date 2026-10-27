@@ -275,6 +275,7 @@ def _out_of_flow_layout(context, box, index, child, new_children,
 
     # Float child layout.
     elif child.is_floated():
+        bottom_float_placed = False
         new_child, out_of_flow_resume_at = float_layout(
             context, child, box, absolute_boxes, fixed_boxes, bottom_space,
             skip_stack=None)
@@ -306,6 +307,7 @@ def _out_of_flow_layout(context, box, index, child, new_children,
                     context.page_bottom - child.position_y >=
                     new_child.margin_height()):
                 # Reserve the space at the bottom of the page.
+                bottom_float_placed = True
                 context.page_bottom -= new_child.margin_height()
                 context.page_bottom_floats.setdefault(
                     context.current_page_number, []).append(new_child)
@@ -321,6 +323,7 @@ def _out_of_flow_layout(context, box, index, child, new_children,
         page_overflow = context.overflows_page(
             bottom_space, new_child.position_y + new_child.height)
         add_child = (
+            bottom_float_placed or
             (page_is_empty and not new_children) or
             not page_overflow or
             box.is_monolithic())
