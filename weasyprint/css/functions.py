@@ -150,24 +150,29 @@ def check_string_or_element(string_or_element, token):
             if ident.type != 'ident':
                 return
             if ident.lower_value not in (
-                    'first', 'start', 'last', 'first-except', 'all'):
+                    'first', 'start', 'last', 'first-except', 'all',
+                    'all-on-page'):
                 return
             ident = ident.lower_value
         else:
             ident = 'first'
-        if ident == 'all':
-            # Non-standard: join the value carried from the previous pages
-            # with every value assigned on the page.
-            if string_or_element != 'string':
-                return
+        if ident in ('all', 'all-on-page'):
+            # Non-standard: 'all' joins every value assigned on the page
+            # with the value carried from the previous pages, 'all-on-page'
+            # leaves the carried value out. The separator only makes sense
+            # for strings; elements are placed one after the other.
             if arguments:
+                if string_or_element != 'string':
+                    return
                 token = arguments.pop(0)
                 if token.type != 'string':
                     return
                 separator = token.value
             else:
                 separator = ' '
-            return ('string()', (custom_ident, 'all', separator))
+            if string_or_element == 'string':
+                return ('string()', (custom_ident, ident, separator))
+            return (f'{string_or_element}()', (custom_ident, ident))
         if arguments:
             return
         return (f'{string_or_element}()', (custom_ident, ident))

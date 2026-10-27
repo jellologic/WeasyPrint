@@ -377,17 +377,26 @@ class LayoutContext:
                 return last_string
             elif keyword == 'first-except':
                 return
-            elif keyword == 'all':
+            elif keyword in ('all', 'all-on-page'):
                 page_values = list(store[name][self.current_page])
-                start = None
-                for previous_page in range(self.current_page - 1, 0, -1):
-                    if previous_page in store[name]:
-                        start = store[name][previous_page][-1]
-                        break
-                if start and (not page_values or page_values[0] != start):
-                    page_values.insert(0, start)
-                return separator.join(
-                    value for value in page_values if value)
+                if keyword == 'all':
+                    start = None
+                    for previous_page in range(self.current_page - 1, 0, -1):
+                        if previous_page in store[name]:
+                            start = store[name][previous_page][-1]
+                            break
+                    if start and (not page_values or page_values[0] != start):
+                        page_values.insert(0, start)
+                if page_values and isinstance(first_string, str):
+                    return separator.join(
+                        value for value in page_values if value)
+                # Running elements: every box is placed, one after the
+                # other, in the margin box.
+                return page_values
+        elif keyword == 'all-on-page':
+            # 'all-on-page' leaves the carried value out: nothing was
+            # assigned on this page.
+            return
         # Search backwards through previous pages
         for previous_page in range(self.current_page - 1, 0, -1):
             if previous_page in store[name]:

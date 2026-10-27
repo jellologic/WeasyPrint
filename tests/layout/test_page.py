@@ -1793,3 +1793,83 @@ def test_running_float():
         Hello!
       </footer>
     ''')
+
+
+@assert_no_logs
+def test_running_elements_all():
+    # element(name, all) places every running element assigned on the
+    # page, plus the element carried in from an earlier page.
+    pages = render_pages('''
+      <style>
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-center { content: element(title, all) }
+        }
+        article { break-after: page }
+        h1 { position: running(title) }
+      </style>
+      <article><div>1</div></article>
+      <article><h1>2-first</h1><h1>2-last</h1></article>
+      <article><p>3</p></article>
+    ''')
+    assert len(pages) == 3
+    texts = []
+    for page in pages:
+        html, margin = page.children
+        texts.append(''.join(
+            getattr(node, 'text', '') for node in margin.descendants()))
+    assert texts == ['', '2-first2-last', '2-last']
+
+
+@assert_no_logs
+def test_running_elements_all_on_page():
+    # element(name, all-on-page) leaves the carried element out.
+    pages = render_pages('''
+      <style>
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-center { content: element(title, all-on-page) }
+        }
+        article { break-after: page }
+        h1 { position: running(title) }
+      </style>
+      <article><div>1</div></article>
+      <article><h1>2-first</h1><h1>2-last</h1></article>
+      <article><p>3</p></article>
+    ''')
+    assert len(pages) == 3
+    texts = []
+    for page in pages:
+        html, margin = page.children
+        texts.append(''.join(
+            getattr(node, 'text', '') for node in margin.descendants()))
+    assert texts == ['', '2-first2-last', '']
+
+
+@assert_no_logs
+def test_string_set_all_on_page():
+    # string(name, all-on-page) joins the values assigned on the page,
+    # without the one carried from an earlier page.
+    pages = render_pages('''
+      <style>
+        @page {
+          margin: 50px;
+          size: 200px;
+          @bottom-center { content: string(sect, all-on-page) }
+        }
+        article { break-after: page }
+        h1 { string-set: sect content() }
+      </style>
+      <article><div>1</div></article>
+      <article><h1>2-first</h1><h1>2-last</h1></article>
+      <article><p>3</p></article>
+    ''')
+    assert len(pages) == 3
+    texts = []
+    for page in pages:
+        html, margin = page.children
+        texts.append(''.join(
+            getattr(node, 'text', '') for node in margin.descendants()))
+    assert texts == ['', '2-first 2-last', '']
