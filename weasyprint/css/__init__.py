@@ -31,8 +31,21 @@ from ..urls import URLFetchingError, fetch, get_url_attribute, url_join
 from . import counters, media_queries
 from .computed_values import COMPUTER_FUNCTIONS, PHYSICAL_FUNCTIONS
 from .functions import Function, check_math, check_var
-from .properties import INHERITED, INITIAL_NOT_COMPUTED, INITIAL_VALUES, ZERO_PIXELS
-from .units import ANGLE_UNITS, LENGTH_UNITS, RELATIVE_UNITS, to_pixels, to_radians
+from .properties import (
+    INHERITED,
+    INITIAL_NOT_COMPUTED,
+    INITIAL_VALUES,
+    ZERO_PIXELS,
+    Dimension,
+)
+from .units import (
+    ANGLE_UNITS,
+    LENGTH_UNITS,
+    LENGTHS_TO_PIXELS,
+    RELATIVE_UNITS,
+    to_pixels,
+    to_radians,
+)
 from .validation import preprocess_declarations
 from .validation.descriptors import preprocess_descriptors
 from .validation.properties import PROPERTIES, validate_non_shorthand
@@ -124,6 +137,7 @@ class StyleFor:
         heights = {}     # element -> content height
         active_widths = {}  # element -> nearest container width
         active_heights = {}  # element -> nearest size container height
+        grid_auto_slots = {}  # grid element -> next free column for items
         for element in html.wrapper_element.iter_subtree():
             parent_element = element.parent
             if self._container_rules:
@@ -205,7 +219,13 @@ class StyleFor:
                         for prop, values, importance in declarations:
                             precedence = declaration_precedence(
                                 'author', importance)
-                            weight = (precedence, inf, selector.specificity)
+                            # The extra tail sorts container rules after
+                            # same-specificity sheet rules, so that a
+                            # matching query overrides the base
+                            # declarations (container rules are applied
+                            # before the sheet declarations).
+                            weight = (
+                                precedence, inf, selector.specificity, inf)
                             old_weight = style.get(prop, (None, None))[1]
                             if old_weight is None or old_weight <= weight:
                                 style[prop] = values, weight
@@ -249,10 +269,14 @@ class StyleFor:
                     if parent_element is None:
                         parent_width = self._page_content_width
                         parent_height = self._page_content_height
+                        parent_style = None
                     else:
                         parent_width = widths.get(parent_element.etree_element)
                         parent_height = heights.get(parent_element.etree_element)
-                    width = self._element_content_width(style, parent_width)
+                        parent_style = self._computed_styles.get(
+                            (parent_element.etree_element, None))
+                    width = self._element_content_width(
+                        style, parent_width, parent_style, grid_auto_slots)
                     widths[element.etree_element] = width
                     active_widths[element.etree_element] = (
                         active_container_width)
@@ -402,12 +426,14 @@ class StyleFor:
         except (TypeError, ValueError):
             return None
 
-    def _element_content_width(self, style, parent_width):
+    def _element_content_width(
+            self, style, parent_width, parent_style=None, grid_auto_slots=None):
         """Return the element's content width, None when not determinable.
 
         Only the common top-down cases are handled: block-level boxes with
-        definite or filling widths. Floats, inline-level boxes, tables and
-        out-of-flow boxes are unknown.
+        definite or filling widths, and grid items whose width follows
+        from the parent's tracks. Floats, inline-level boxes, tables,
+        out-of-flow boxes and flex items are unknown.
 
         """
         if (
@@ -419,13 +445,29 @@ class StyleFor:
         if display in (('inline',), ('inline-block',)) or any(
                 'table' in value for value in display):
             return None
+        if parent_style is not None:
+            parent_display = parent_style['display']
+            if 'grid' in parent_display:
+                return self._grid_item_content_width(
+                    style, parent_style, parent_width, grid_auto_slots)
+            if 'flex' in parent_display:
+                # Flex items are sized from flex-basis and grow against
+                # content: only a definite width is determinable.
+                if style['width'] == 'auto':
+                    return None
+                return self._content_width_from_containing_block(
+                    style, parent_width)
+        return self._content_width_from_containing_block(style, parent_width)
+
+    def _content_width_from_containing_block(self, style, cb_width):
+        """Content width of a box filling or using a definite width."""
 
         def resolve(value):
-            return self._resolve_width(value, parent_width)
+            return self._resolve_width(value, cb_width)
 
         if style['width'] == 'auto':
             # The box fills the containing block.
-            width = parent_width
+            width = cb_width
             for side in ('left', 'right'):
                 margin = style[f'margin_{side}']
                 margin = 0 if margin == 'auto' else resolve(margin)
@@ -446,6 +488,175 @@ class StyleFor:
                         return None
                     width -= padding + border
         return max(width, 0)
+
+    def _grid_track_entries(self, columns):
+        """Flat list of track sizes from a computed template, or None."""
+        if columns in (None, 'none'):
+            return []
+        if not isinstance(columns, (tuple, list)):
+            return None
+        tracks = []
+        for entry in columns:
+            # Dimension subclasses tuple, so test it first.
+            if isinstance(entry, Dimension):
+                tracks.append(entry)
+            elif isinstance(entry, str):
+                tracks.append(entry)
+            elif isinstance(entry, tuple) and entry and (
+                    entry[0] == 'repeat()'):
+                _, count, repeated = entry
+                if not isinstance(count, int) or count < 1:
+                    # auto-fill and auto-fit depend on the item count.
+                    return None
+                repeated = [
+                    item for item in repeated
+                    if isinstance(item, (Dimension, str)) or (
+                        isinstance(item, tuple) and item and (
+                            item[0] in ('minmax()', 'fit-content()')))]
+                for _ in range(count):
+                    tracks.extend(repeated)
+            elif isinstance(entry, tuple) and entry and (
+                    entry[0] in ('minmax()', 'fit-content()')):
+                tracks.append(entry)
+            # Other tuples are line names: no size.
+        return tracks
+
+    def _grid_item_content_width(
+            self, style, grid_style, grid_width, grid_auto_slots):
+        """Estimate a grid item's content width from the parent's tracks.
+
+        Handle definite tracks (lengths, percentages and fr units) and
+        items with a definite column position or sequential auto-placement
+        in a row-flow grid. Return None when the width is not
+        determinable.
+
+        """
+        if grid_width is None:
+            return None
+        tracks = self._grid_track_entries(
+            grid_style['grid_template_columns'])
+        if tracks is None or not tracks:
+            # Implicit tracks are content-sized, except the common
+            # single-track grid whose item fills the grid.
+            if tracks == []:
+                return self._content_width_from_containing_block(
+                    style, grid_width)
+            return None
+        flow = grid_style['grid_auto_flow']
+        if 'column' in flow or 'dense' in flow:
+            return None
+
+        def track_size(entry):
+            """Return (fixed px, fr factor), or None when undeterminable."""
+            # Dimension subclasses tuple, so test it first.
+            if isinstance(entry, Dimension):
+                if getattr(entry, 'unit', None) == 'fr':
+                    return 0, entry.value
+                px = to_pixels(entry, grid_style, 'grid-template-columns')
+                return px, 0
+            if isinstance(entry, str):
+                # 'auto', 'min-content' and 'max-content' are content-based.
+                return None
+            if isinstance(entry, tuple) and entry and (
+                    entry[0] == 'minmax()'):
+                breadth = entry[-1]
+                if getattr(breadth, 'unit', None) == 'fr':
+                    # A fr maximum: the (ignored, approximation) minimum
+                    # floors the share.
+                    return 0, breadth.value
+                return track_size(breadth)
+            # 'fit-content()' is content-based: undeterminable.
+            return None
+
+        resolved = []
+        fr_total = 0
+        fixed = 0
+        for entry in tracks:
+            size = track_size(entry)
+            if size is None:
+                return None
+            px, fr = size
+            fr_total += fr
+            fixed += px
+            resolved.append((px, fr))
+        gap = grid_style['column_gap']
+        if gap == 'normal':
+            gap_px = 0
+        elif getattr(gap, 'unit', None) == '%':
+            return None
+        else:
+            gap_px = to_pixels(gap, grid_style, 'column-gap')
+
+        def line_number(value, end=False):
+            """Column line number from a computed grid-line value."""
+            if isinstance(value, tuple):
+                if value[0] == 'span' or value[2] is not None:
+                    return None
+                number = value[1]
+                if number is None:
+                    return None
+                if number < 0:
+                    number = len(tracks) + 1 + number
+                return number
+            return None
+
+        start = style['grid_column_start']
+        end = style['grid_column_end']
+        span = None
+        if start == 'auto' and end == 'auto':
+            span = 1
+            slot = grid_auto_slots.setdefault(id(grid_style), 0) if (
+                grid_auto_slots is not None) else 0
+            position = slot + 1
+            if grid_auto_slots is not None:
+                grid_auto_slots[id(grid_style)] = slot + 1
+        elif isinstance(start, tuple) and start[0] == 'span':
+            if start[2] is not None:
+                return None
+            span = start[1] or 1
+            if end != 'auto':
+                end_number = line_number(end)
+                if end_number is None:
+                    return None
+                position = max(1, end_number - span + 1)
+            else:
+                slot = grid_auto_slots.setdefault(
+                    id(grid_style), 0) if grid_auto_slots is not None else 0
+                position = slot + 1
+                if grid_auto_slots is not None:
+                    grid_auto_slots[id(grid_style)] = slot + span
+        else:
+            position = line_number(start)
+            if position is None:
+                return None
+            if end == 'auto':
+                span = 1
+            elif isinstance(end, tuple) and end[0] == 'span':
+                if end[2] is not None:
+                    return None
+                span = end[1] or 1
+            else:
+                end_number = line_number(end)
+                if end_number is None:
+                    return None
+                span = max(1, end_number - position)
+        if position < 1 or position + span - 1 > len(tracks):
+            # Outside the definite tracks.
+            return None
+
+        if fr_total:
+            remaining = (
+                grid_width - fixed - gap_px * (len(resolved) - 1))
+            if remaining < 0:
+                remaining = 0
+            fr_px = remaining / fr_total
+        else:
+            fr_px = 0
+        span_width = sum(
+            px if fr == 0 else fr * fr_px
+            for px, fr in resolved[position - 1:position - 1 + span])
+        span_width += gap_px * (span - 1)
+        return self._content_width_from_containing_block(style, span_width)
 
     def __call__(self, element, pseudo_type=None):
         if style := self._computed_styles.get((element, pseudo_type)):
@@ -1918,9 +2129,16 @@ def _evaluate_supports_condition(prelude, base_url):
 def _container_length(token):
     """Return a plain pixel length for a container condition, or None."""
     value = get_length(token, negative=False)
-    if value is None or getattr(value, 'unit', None) == '%':
+    if value is None:
         return
-    return value.value if hasattr(value, 'value') else value
+    unit = getattr(value, 'unit', None)
+    if unit == '%' or unit in RELATIVE_UNITS:
+        # Percentages and font-relative lengths are not resolved at
+        # preprocessing time, when no element is known.
+        return
+    value = value.value
+    unit = (unit or 'px').lower()
+    return value * LENGTHS_TO_PIXELS.get(unit, 1)
 
 
 def parse_container_condition(block):

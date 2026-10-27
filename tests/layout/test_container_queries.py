@@ -281,3 +281,141 @@ def test_container_shorthand_bare_type():
     ''')
     assert find_card(page, 'ca').style['border_left_width'] == 2
     assert find_card(page, 'cb').style['border_left_width'] == 0
+
+
+@assert_no_logs
+def test_container_query_pt_lengths():
+    # Lengths in the query are converted: 300pt is 400px, so a 255pt
+    # (340px) container matches both bounds.
+    for query in ('(width < 400px)', '(max-width: 400px)',
+                  '(width < 300pt)', '(min-width: 100px)'):
+        page, = render_pages('''
+          <style>
+            @page { size: 600px 100px; margin: 0 }
+            body { margin: 0 }
+            .slot { width: 255pt; container-type: inline-size }
+            .card { color: black }
+            @container %s { .card { color: red } }
+          </style>
+          <div class="slot"><p class="card">x</p></div>
+        ''' % query)
+        card = next(
+            box for box in page.descendants()
+            if getattr(box, 'element_tag', '') == 'p')
+        assert card.style['color'] == (1, 0, 0, 1), query
+
+
+@assert_no_logs
+def test_container_query_inherited_properties():
+    # Inherited declarations (color) from a matching container rule apply
+    # like non-inherited ones (border-left), overriding a base rule of
+    # the same specificity.
+    page, = render_pages('''
+      <style>
+        @page { size: 600px 100px; margin: 0 }
+        body { margin: 0 }
+        .slot { width: 255pt; container-type: inline-size }
+        .card { color: black }
+        @container (width < 400px) {
+          .card { color: red; border-left: 2px solid }
+        }
+      </style>
+      <div class="slot"><p class="card" id="target">x</p></div>
+    ''')
+    card = next(
+        box for box in page.descendants()
+        if getattr(box, 'element_tag', '') == 'p')
+    assert card.style['color'] == (1, 0, 0, 1)
+    assert card.style['border_left_width'] == 2
+
+
+@assert_no_logs
+def test_container_query_grid_item():
+    # A container that is a grid item is sized by its tracks: span 6 of
+    # 12 in a 525pt grid is 350px wide.
+    def page_for(grid_extra=''):
+        pages = render_pages('''
+          <style>
+            @page { size: 600px 100px; margin: 0 }
+            body { margin: 0 }
+            .grid { display: grid; grid-template-columns: repeat(12, 1fr);
+                    width: 525pt %s }
+            .slot { container-type: inline-size }
+            .card { color: black }
+            @container (width < 400px) { .card { color: red } }
+          </style>
+          <div class="grid">
+            <div class="slot" style="grid-column: span 6">
+              <p class="card">x</p>
+            </div>
+          </div>
+        ''' % grid_extra)
+        return next(
+            box for box in pages[0].descendants()
+            if getattr(box, 'element_tag', '') == 'p')
+
+    assert page_for().style['color'] == (1, 0, 0, 1)
+    # Narrower bound: the 350px item does not match.
+    pages = render_pages('''
+      <style>
+        @page { size: 600px 100px; margin: 0 }
+        body { margin: 0 }
+        .grid { display: grid; grid-template-columns: repeat(12, 1fr);
+                width: 525pt }
+        .slot { container-type: inline-size }
+        .card { color: black }
+        @container (width < 300px) { .card { color: red } }
+      </style>
+      <div class="grid">
+        <div class="slot" style="grid-column: span 6"><p class="card">x</p></div>
+      </div>
+    ''')
+    card = next(
+        box for box in pages[0].descendants()
+        if getattr(box, 'element_tag', '') == 'p')
+    assert card.style['color'] == (0, 0, 0, 1)
+
+
+@assert_no_logs
+def test_container_query_definite_track():
+    # A container in a definite 255pt track is 340px wide.
+    page, = render_pages('''
+      <style>
+        @page { size: 600px 100px; margin: 0 }
+        body { margin: 0 }
+        .grid { display: grid; grid-template-columns: 255pt;
+                width: 525pt }
+        .slot { container-type: inline-size }
+        .card { color: black }
+        @container (width < 400px) { .card { color: red } }
+      </style>
+      <div class="grid">
+        <div class="slot"><p class="card">x</p></div>
+      </div>
+    ''')
+    card = next(
+        box for box in page.descendants()
+        if getattr(box, 'element_tag', '') == 'p')
+    assert card.style['color'] == (1, 0, 0, 1)
+
+
+@assert_no_logs
+def test_container_query_flex_item():
+    # A flex item with a definite width is determinable.
+    page, = render_pages('''
+      <style>
+        @page { size: 600px 100px; margin: 0 }
+        body { margin: 0 }
+        .row { display: flex; width: 600px }
+        .slot { width: 255pt; container-type: inline-size }
+        .card { color: black }
+        @container (width < 400px) { .card { color: red } }
+      </style>
+      <div class="row">
+        <div class="slot"><p class="card">x</p></div>
+      </div>
+    ''')
+    card = next(
+        box for box in page.descendants()
+        if getattr(box, 'element_tag', '') == 'p')
+    assert card.style['color'] == (1, 0, 0, 1)
