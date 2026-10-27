@@ -830,6 +830,19 @@ def _in_flow_layout(context, box, index, child, new_children, page_is_empty,
         if split_too_late:
             remove_placeholders(
                 context, [new_child], absolute_boxes, fixed_boxes)
+            # The running elements collected while laying the child out
+            # belong to the page it just left.
+            for descendant in [child, *child.descendants()]:
+                if descendant.is_running():
+                    running_name = descendant.style['position'][1]
+                    page = context.current_page
+                    page_elements = context.running_elements[running_name][page]
+                    if descendant in page_elements:
+                        page_elements.remove(descendant)
+                        if not page_elements:
+                            # An empty page entry would still count as
+                            # "assigned" when resolved.
+                            del context.running_elements[running_name][page]
             child.position_x, child.position_y = child_position
             resume_at = {index: None}
             stop = True

@@ -1932,3 +1932,35 @@ def test_running_block_keeps_block_children():
         box.text for box in margin.descendants()
         if type(box).__name__ == 'TextBox']
     assert 'tab' in ''.join(margin_texts)
+
+
+@assert_no_logs
+def test_running_elements_moved_section():
+    # A section moved to the next page by break-before-min-space does
+    # not leave its running element assigned to the page it left.
+    fill = ''.join(f'<p>line {i}</p>' for i in range(14))
+    section = (
+        '<section><h2><span class="tab">TAB</span>B</h2>'
+        + ''.join(f'<p>b{i}</p>' for i in range(20)) + '</section>')
+    pages = render_pages('''
+      <style>
+        @page { size: 4in 4in; margin: 0.5in;
+                @right-top { content: element(tab, all); width: 0.5in } }
+        body { margin: 0; font: 10px/15px sans-serif }
+        p { margin: 0 }
+        section { break-before-min-space: 33%% }
+        .tab { position: running(tab) }
+      </style>
+      %s%s
+    ''' % (fill, section))
+    tab_counts = [
+        sum(
+            1 for box in page.descendants()
+            if type(box).__name__ == 'TextBox' and
+            box.text.startswith('TAB'))
+        for page in pages]
+    # No tab on the page the section left; the tab prints where the
+    # section starts and is carried to the next page.
+    assert tab_counts[0] == 0
+    assert tab_counts[1] == 1
+    assert tab_counts[2] >= 1
