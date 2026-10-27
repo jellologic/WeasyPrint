@@ -353,8 +353,9 @@ def _distribute_extra_space(affected_sizes, affected_tracks_types, size_contribu
 
 
 def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
-                          implicit_start, direction, gap, context, containing_block,
-                          orthogonal_sizes=None):
+                          implicit_start, direction, gap, context,
+                          containing_block, orthogonal_sizes=None,
+                          orthogonal_gap=0):
     assert direction in 'xy'
     tracks_sizes = []
     # TODO: Check that auto box size is 0 for percentages.
@@ -399,7 +400,11 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
             height = 0
             for child in children:
                 x, y, width, span = children_positions[child]
-                width = sum(orthogonal_sizes[x:x+width])
+                # The item is laid out across its spanned tracks,
+                # including the gaps between them.
+                width = (
+                    sum(orthogonal_sizes[x:x+width]) +
+                    (width - 1) * orthogonal_gap)
                 child = child.deepcopy()
                 if (
                         child.style['grid_template_rows'] and
@@ -468,7 +473,9 @@ def _resolve_tracks_sizes(sizing_functions, box_size, children_positions,
                 parent = boxes.BlockContainerBox.anonymous_from(containing_block, ())
                 resolve_percentages(parent, containing_block)
                 if direction == 'y':
-                    parent.width = sum(orthogonal_sizes[x:x+width])
+                    parent.width = (
+                        sum(orthogonal_sizes[x:x+width]) +
+                        (width - 1) * orthogonal_gap)
                 tracks_children[coord - implicit_start].append((child, parent))
         # 1.2.3.1 For intrinsic minimums.
         # TODO: Respect min-/max-content constraint.
@@ -1112,7 +1119,7 @@ def grid_layout(context, box, bottom_space, skip_stack, containing_block,
     else:
         rows_sizes = _resolve_tracks_sizes(
             row_sizing_functions, box.height, children_positions, implicit_y1,
-            'y', row_gap, context, box, vertical_sizes)
+            'y', row_gap, context, box, vertical_sizes, column_gap)
 
     # 3.3 Re-resolve the sizes of the grid columns with min-/max-content.
     # TODO: Re-resolve.

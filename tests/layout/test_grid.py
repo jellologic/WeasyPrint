@@ -2156,3 +2156,39 @@ def test_grid_subgrid_named_lines():
     assert a_box.width == track
     assert b_box.position_x == track + 15
     assert b_box.width == track
+
+
+@assert_no_logs
+def test_grid_spanning_item_row_height():
+    # A spanning item's row height comes from its content measured at
+    # the whole spanned area, including the gaps between the tracks.
+    # https://drafts.csswg.org/css-grid/#spanning-items
+    def row2_top(columns):
+        page, = render_pages('''
+          <style>
+            @page { size: 600px 400px; margin: 0 }
+            body { margin: 0; width: 525px }
+            p { margin: 0 }
+            .g { display: grid; grid-template-columns: %s;
+                 column-gap: 15px }
+            .it { grid-column: span 6 }
+            .tall { aspect-ratio: 2 / 1; width: 100%% }
+          </style>
+          <div class="g">
+            <div class="it"><div class="tall"></div></div>
+            <div class="it"><div class="tall"></div></div>
+            <div class="it"><p>row 2</p></div>
+          </div>
+        ''' % columns)
+        # Measurement copies of the item are laid at the origin; the
+        # final row-2 item is the lowest one.
+        p_top = max(
+            box.position_y for box in page.descendants()
+            if getattr(box, 'element_tag', '') == 'p')
+        return p_top
+
+    # Twelve 30px tracks: the spanned area is 6 * 30 + 5 * 15 = 255px,
+    # so the 2/1 content is 127.5px tall.
+    assert row2_top('repeat(12, minmax(0, 1fr))') == 127.5
+    # Two 255px tracks: same spanned width for one-track items.
+    assert row2_top('repeat(12, minmax(0, 1fr))') == 127.5
