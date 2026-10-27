@@ -108,3 +108,34 @@ def test_text_wrap_shorthand_expansion():
     assert boxes['p'].style['text_wrap_mode'] == 'nowrap'
     assert boxes['section'].style['text_wrap_style'] == 'pretty'
     assert boxes['section'].style['text_wrap_mode'] == 'nowrap'
+
+
+@assert_no_logs
+def test_text_wrap_pretty_keeps_measure():
+    # pretty keeps greedy breaking: the lines above the tail keep the
+    # full measure, and a short last line gains a word from the line
+    # before it.
+    text = ('Contrary to popular belief, Lorem Ipsum is not simply random '
+            'text. It has roots in a piece of classical Latin literature.')
+
+    def widths(wrap):
+        page, = render_pages(f'''
+          <style>
+            @page {{ size: 400px 400px; margin: 0 }}
+            body {{ margin: 0; font-family: weasyprint; font-size: 12px }}
+            div {{ width: 345.6px; text-wrap: {wrap} }}
+          </style>
+          <div>{text}</div>
+        ''')
+        return [
+            line.width for line in page.descendants()
+            if type(line).__name__ == 'LineBox']
+
+    wrap_widths = widths('wrap')
+    pretty_widths = widths('pretty')
+    assert len(wrap_widths) == len(pretty_widths) == 5
+    # The lines above the tail keep the full measure.
+    assert pretty_widths[:3] == wrap_widths[:3]
+    # The short last line gained a word from the line before it.
+    assert pretty_widths[-1] > wrap_widths[-1]
+    assert pretty_widths[-2] < wrap_widths[-2]

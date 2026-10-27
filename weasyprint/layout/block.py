@@ -415,7 +415,8 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
     # text-wrap: balance — narrow the line-breaking width so that the
     # lines of a short block (single font run, at most 6 lines) equalise,
     # keeping the same line count as greedy wrapping.
-    if box.style['text_wrap_style'] in ('balance', 'pretty') and not skip_stack:
+    pretty_tail = None
+    if box.style['text_wrap_style'] == 'balance' and not skip_stack:
         from ..text.ffi import pango
         from ..text.line_break import create_layout
         text_box_children = [
@@ -452,10 +453,116 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
                     cb_copy = box.copy()
                     cb_copy.width = hi
                     new_containing_block = cb_copy
+    elif box.style['text_wrap_style'] == 'pretty' and not skip_stack:
+        # text-wrap: pretty keeps greedy line breaking and only adjusts
+        # the end of the paragraph: when the last line is very short, a
+        # word or two is pulled down from the line before it.
+        from ..text.ffi import FROM_UNITS, ffi, pango
+        from ..text.line_break import create_layout
+
+        def pango_line_width(line):
+            logical = ffi.new('PangoRectangle *')
+            pango.pango_layout_line_get_extents(line, ffi.NULL, logical)
+            return logical.width * FROM_UNITS
+        text_box_children = [
+            c for c in child.descendants() if isinstance(c, boxes.TextBox)]
+        single_run = (
+            text_box_children and not any(
+                isinstance(c, boxes.InlineBox)
+                for c in child.descendants()))
+        if single_run:
+            text = ''.join(c.text for c in text_box_children)
+            full_width = new_containing_block.width
+            layout = create_layout(text, box.style, context, full_width, 0)
+            count = 0
+            while pango.pango_layout_get_line_readonly(layout.layout, count):
+                count += 1
+                if count > 200:
+                    break
+            last = pango.pango_layout_get_line_readonly(layout.layout, count - 1)
+            if 1 < count and last is not None:
+                last_width = pango_line_width(last)
+                if last_width < full_width / 2:
+                    prev = pango.pango_layout_get_line_readonly(
+                        layout.layout, count - 2)
+                    tail_text = text.encode()[prev.start_index:].decode()
+                    # Narrow the tail just below its current first-line
+                    # width: its last word wraps down to the last line.
+                    tail_width = full_width
+                    for iteration in range(3):
+                        tail_layout = create_layout(
+                            tail_text, box.style, context, tail_width, 0)
+                        first = pango.pango_layout_get_line_readonly(
+                            tail_layout.layout, 0)
+                        second = pango.pango_layout_get_line_readonly(
+                            tail_layout.layout, 1)
+                        if not first or not second:
+                            break
+                        # Two candidates: just below the tail's first
+                        # line width (its last word wraps down), and the
+                        # natural width of the first line trimmed after
+                        # its last word.
+                        first_width = pango_line_width(first)
+                        seg = tail_text.encode()[
+                            first.start_index:first.start_index + first.length]
+                        space = seg.rstrip(b' ').rfind(b' ')
+                        candidates = [first_width - 0.1]
+                        if space >= 0:
+                            trimmed = tail_text.encode()[
+                                :first.start_index + space].decode()
+                            trimmed_layout = create_layout(
+                                trimmed, box.style, context, None, 0)
+                            trimmed_line = (
+                                pango.pango_layout_get_line_readonly(
+                                    trimmed_layout.layout, 0))
+                            if trimmed_line:
+                                candidates.append(
+                                    pango_line_width(trimmed_line))
+                        for candidate in candidates:
+                            if candidate <= 0 or candidate >= tail_width:
+                                continue
+                            check = create_layout(
+                                tail_text, box.style, context, candidate, 0)
+                            check_first = (
+                                pango.pango_layout_get_line_readonly(
+                                    check.layout, 0))
+                            check_last = (
+                                pango.pango_layout_get_line_readonly(
+                                    check.layout, 1))
+                            check_extra = (
+                                pango.pango_layout_get_line_readonly(
+                                    check.layout, 2))
+                            if (
+                                    not check_first or not check_last or
+                                    check_extra):
+                                # The move changed the line count.
+                                continue
+                            moved_width = pango_line_width(check_last)
+                            if moved_width <= last_width:
+                                continue
+                            # A word moved down to the last line.
+                            last_width = moved_width
+                            tail_width = candidate
+                            break
+                        if last_width >= full_width / 2:
+                            break
+                    if tail_width < full_width:
+                        pretty_tail = count - 3, tail_width
+                        if pretty_tail[0] < 0:
+                            # The whole paragraph is the adjusted tail.
+                            cb_copy = box.copy()
+                            cb_copy.width = tail_width
+                            new_containing_block = cb_copy
+                            pretty_tail = None
     lines_iterator = iter_line_boxes(
         context, child, position_y, bottom_space, skip_stack, new_containing_block,
         absolute_boxes, fixed_boxes, first_letter_style, first_line_style)
-    for i, (line, resume_at) in enumerate(lines_iterator):
+    i = 0
+    while True:
+        next_line = next(lines_iterator, None)
+        if next_line is None:
+            break
+        line, resume_at = next_line
         # Break box if we reached max-lines
         if max_lines is not None:
             if max_lines == 0:
@@ -587,6 +694,19 @@ def _linebox_layout(context, box, index, child, new_children, page_is_empty,
         new_children.append(line)
         position_y = new_position_y
         skip_stack = resume_at
+
+        # text-wrap: pretty — lay the last two lines with the adjusted
+        # width (the lines above keep the full measure).
+        if (
+                pretty_tail is not None and i == pretty_tail[0] and
+                resume_at is not None):
+            pretty_cb = box.copy()
+            pretty_cb.width = pretty_tail[1]
+            lines_iterator = iter_line_boxes(
+                context, child, position_y, bottom_space, resume_at,
+                pretty_cb, absolute_boxes, fixed_boxes, None, None)
+            pretty_tail = None
+        i += 1
 
     if new_children:
         resume_at = {index: new_children[-1].resume_at}
